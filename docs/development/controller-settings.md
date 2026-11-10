@@ -88,6 +88,21 @@ buttons and Settings → Controller). It is recomputed when the protocol, the se
 controller changes. After the run, the runner's best-effort STOP/allOff is unchanged; there is no
 "restore previous mode" — every run asserts what it needs.
 
+### `?lenient_controller` (escape hatch)
+
+Opening the Studio with `?lenient_controller` in the URL turns three checks from blocking into
+warnings: the capability bit for modes 2/3, the panel-firmware footer, and a failed fleet verify.
+These compare what the controller and SD card *report*. Everything the Studio *does* is unchanged:
+the SETs and their read-backs still run and still refuse the run if they fail, and rig identity,
+refresh limits and unreadable settings still block. Each downgraded check stays in the run header
+as a warning starting `LENIENT (not blocking):`.
+
+It exists for a controller that supports a mode without advertising it (Bergamo arena,
+2026-11-10: mode 2 works, `v3_triggered` is not reported, SD footer `panel-fw-v1.3.1` against a
+required `2p`). The flag is read once at page load, because the Studio's URL sync drops query
+parameters it does not own, and is kept for the tab in `sessionStorage`. Without the flag nothing
+changes. Prefer fixing the firmware's capability bit or the rig file's requirement.
+
 ## 4. Panel firmware verification
 
 Three layers, from cheap to conclusive:

@@ -298,6 +298,89 @@ checkTrue(
     !plan.ok && plan.blocking.some((b) => /v3_triggered/.test(b)),
     plan.blocking.join(' | ')
 );
+
+console.log('planAssertions — lenient (?lenient_controller)');
+// The Bergamo arena on 2026-11-10: mode 2 works, but the controller does not report
+// v3_triggered and the SD footer is not "2p".
+const snapBergamo = Object.assign({}, snapOk, {
+    capabilities: ['g6_mode', 'v2_local_storage', 'io_ext', 'health'],
+    panel_firmware: { version: 'panel-fw-v1.3.1' },
+    verified: null
+});
+plan = CS.planAssertions({ block: block2p, rig: rig2p, snapshot: snapBergamo, patterns: [] });
+check(
+    'without lenient: capability and firmware both block',
+    [plan.ok, plan.blocking.length],
+    [false, 2]
+);
+plan = CS.planAssertions({
+    block: block2p,
+    rig: rig2p,
+    snapshot: snapBergamo,
+    patterns: [],
+    lenient: true
+});
+check(
+    'lenient: not blocked, and the mode is still SET (1→2)',
+    [plan.ok, plan.blocking, plan.actions],
+    [true, [], [{ setting: 'panel_mode', from: 1, to: 2 }]]
+);
+checkTrue(
+    'lenient: capability and firmware mismatches are kept as marked warnings',
+    plan.warnings.filter((w) => /^LENIENT \(not blocking\): /.test(w)).length === 2 &&
+        plan.warnings.some((w) => /v3_triggered/.test(w)) &&
+        plan.warnings.some((w) => /panel-fw-v1\.3\.1/.test(w)),
+    plan.warnings.join(' | ')
+);
+plan = CS.planAssertions({
+    block: block2p,
+    rig: rig2p,
+    snapshot: Object.assign({}, snapOk, {
+        verified: { ok: false, verified: 18, total: 20, mismatched: [7, 12] }
+    }),
+    patterns: [],
+    lenient: true
+});
+checkTrue(
+    'lenient: failed fleet verify → marked warning, not blocking',
+    plan.ok && plan.warnings.some((w) => /^LENIENT.*panels 7, 12/.test(w)),
+    plan.warnings.join(' | ')
+);
+plan = CS.planAssertions({
+    block: block2p,
+    rig: rig2p,
+    snapshot: Object.assign({}, snapBergamo, { panel_mode: null }),
+    patterns: [],
+    lenient: true
+});
+checkTrue(
+    'lenient: an unreadable panel mode still blocks on a strict rig',
+    !plan.ok && plan.blocking.some((b) => /cannot read the panel display mode/.test(b)),
+    plan.blocking.join(' | ')
+);
+plan = CS.planAssertions({
+    block: block2p,
+    rig: rigCourse,
+    snapshot: snapBergamo,
+    patterns: [],
+    protocolRig: 'bergamo_g6_2x10_2p',
+    sessionRig: 'cshl_g6_2x10',
+    lenient: true
+});
+checkTrue(
+    'lenient: a rig mismatch still blocks',
+    !plan.ok && plan.blocking.some((b) => /rig/.test(b)),
+    plan.blocking.join(' | ')
+);
+plan = CS.planAssertions({
+    block: CS.normalizeControllerBlock({ panel_mode: 2, refresh_hz: 500 }),
+    rig: rig2p,
+    snapshot: snapBergamo,
+    patterns: [],
+    lenient: true
+});
+check('lenient: refresh_hz above the rig cap still blocks', plan.ok, false);
+
 plan = CS.planAssertions({
     block: block2p,
     rig: rig2p,

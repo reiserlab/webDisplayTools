@@ -185,6 +185,13 @@
         const warnings = [];
         const intended = {};
         const problem = (msg) => (strict ? blocking : warnings).push(msg);
+        // a.lenient (Studio: ?lenient_controller in the URL): the three checks that compare
+        // what the controller / SD card REPORT (capability bit, firmware footer, fleet verify)
+        // warn instead of block. The SET + read-back of panel mode and refresh still runs and
+        // still blocks if it fails. For a controller that supports a mode without advertising it.
+        const lenient = !!a.lenient;
+        const reported = (msg) =>
+            lenient ? warnings.push('LENIENT (not blocking): ' + msg) : blocking.push(msg);
 
         for (const e of block.errors || []) blocking.push(e);
         for (const w of block.warnings || []) warnings.push(w);
@@ -211,14 +218,18 @@
         if (wantMode !== null) {
             intended.panel_mode = wantMode;
             const needCap = PANEL_MODE_CAPABILITY[wantMode];
-            if (needCap && caps && !caps.includes(needCap)) {
-                blocking.push(
+            const capMissing = needCap && caps && !caps.includes(needCap);
+            if (capMissing) {
+                reported(
                     'panel mode ' +
                         panelModeName(wantMode) +
                         ' needs controller capability "' +
                         needCap +
                         '", which this controller does not report'
                 );
+            }
+            if (capMissing && !lenient) {
+                // blocked above
             } else if (snap.panel_mode === null || snap.panel_mode === undefined) {
                 problem(
                     'cannot read the panel display mode (GET_PANEL_DISPLAY_MODE 0x1C gave no reply) — wanted ' +
@@ -315,7 +326,7 @@
                         '"'
                 );
             } else if (!firmwareMatches(ver, wantFw)) {
-                blocking.push(
+                reported(
                     'panel firmware on the SD card is "' +
                         ver +
                         '", required "' +
@@ -331,7 +342,7 @@
                         ')'
                 );
             } else if (v.ok === false) {
-                blocking.push(
+                reported(
                     'panel verify failed: ' +
                         (v.total - v.verified) +
                         ' of ' +

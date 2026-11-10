@@ -3462,6 +3462,17 @@
 <!-- (1b) DOM-free studio helpers -->
 <script src="js/build-channel.js"></script> <!-- release tier: Production / Next / local (docs/development/release-process.md) -->
 <script>
+// ?lenient_controller: captured HERE, at page load, because the Studio's URL sync (encodeApp →
+// history.replaceState) rewrites the query string and drops parameters it does not know.
+// Kept for the tab (sessionStorage) so a reload of the rewritten URL stays lenient.
+window.STUDIO_LENIENT_CONTROLLER = (function () {
+    let on = /[?&]lenient_controller\b/.test(window.location.search);
+    try {
+        if (on) sessionStorage.setItem('studioLenientController', '1');
+        else on = sessionStorage.getItem('studioLenientController') === '1';
+    } catch (_) {}
+    return on;
+})();
 // One-time migration markers are shared by Production and Next (same origin): compare typed +
 // monotonic. Falls back to the old exact match if a stale-cached build-channel.js lacks it.
 function studioMarkerCurrent(stored, current) {
@@ -8600,7 +8611,10 @@ Studio.assertControllerSettings = async function (exp, opts) {
     const snap = await Studio.readControllerSnapshot();
     const patterns = await Studio.referencedPatternInfo(exp);
     const sessionRig = Studio.currentRig && Studio.currentRig.name;
-    const plan = CS.planAssertions({ block: exp.controller, rig, snapshot: snap, patterns, protocolRig: rigNameForProtocol(exp), sessionRig });
+    // ?lenient_controller in the URL: reported-state mismatches (capability bit, firmware footer,
+    // fleet verify) warn instead of block; they are still written into the run header's warnings.
+    const lenient = !!window.STUDIO_LENIENT_CONTROLLER; // read at page load (the URL sync drops the flag)
+    const plan = CS.planAssertions({ block: exp.controller, rig, snapshot: snap, patterns, protocolRig: rigNameForProtocol(exp), sessionRig, lenient });
     const src = exp.controller && exp.controller.declared ? 'protocol controller: block' : 'rig default';
     const header = {
         rig: rig.name || sessionRig || null,
