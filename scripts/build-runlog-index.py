@@ -189,7 +189,11 @@ def main_github(repo, branch, write, only):
                 head, tail = head_tail(text)
             else:
                 head = _raw_range(repo, branch, it['path'], f'bytes=0-{HEAD_BYTES-1}')
-                tail = _raw_range(repo, branch, it['path'], f'bytes=-{TAIL_BYTES}') if it['size'] > TAIL_BYTES else head
+                # Explicit start-end, never a suffix range (`bytes=-N`): on a PRIVATE repo the
+                # token-authenticated raw host answers suffix ranges with "501 Unsupported
+                # client range" (arena-experiments, 2026-11-04), while the public course repo
+                # accepted them. The size comes from the contents listing, so no probe needed.
+                tail = _raw_range(repo, branch, it['path'], f"bytes={it['size'] - TAIL_BYTES}-{it['size'] - 1}") if it['size'] > TAIL_BYTES else head
             runs.append(bookends(it['path'], it['size'], head, tail, err))
         index = {'format_version': 1, 'folder': name, 'generated': 'scripts/build-runlog-index.py', 'runs': runs}
         total += len(runs)
