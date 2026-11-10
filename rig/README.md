@@ -1,5 +1,7 @@
 # ROS 2 bridge proof of concept (LAB-303)
 
+> **Setting up a machine?** Install recipe, host table and per-machine quirks: [`reiserlab/rig-nodes` → `SETUP.md`](https://github.com/reiserlab/rig-nodes/blob/main/SETUP.md). What this workspace adds on top (Studio ↔ gateway, Web Serial, course repo): [`SETUP.md`](SETUP.md) here.
+
 A bounded spike, not a product: can the web runner's bridge be a ROS 2 node graph while the
 **unmodified Arena Studio** keeps connecting to `ws://localhost:8765`, the **run log stays the
 same file every reader already accepts**, and the devices (FicTrac, Kinefly, BIAS) sit behind
