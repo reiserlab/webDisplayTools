@@ -37,12 +37,18 @@ untouched, so bridge 3.4 (`pixi run bridge` at the repo root) stays installed si
 ```bash
 cd rig
 pixi install              # RoboStack Jazzy ros-base + rmw_zenoh + rosbag2/MCAP + rig_nodes from the rig-nodes channel (≈1.3 GB)
+pixi install -e lyrical   # the migration rehearsal only: ROS 2 Lyrical Luth (Python 3.14) + rig-nodes built from git; no rig runs it
 pixi install -e typed     # + rig_interfaces (typed /fictrac/frame + /arena/frame), same RoboStack set, no compiler
 pixi run rig              # router + FicTrac adapter + bridge node        → Studio connects to ws://localhost:8765
 pixi run rig -- --kinefly --bias           # + Kinefly KF/1 adapter + BIAS node
 pixi run rig -- --sim --bias --bias-sim    # demo with no hardware: FicTrac sim + a fake BIAS program
 pixi run test             # the acceptance run (≈ 60 s, no hardware, see below)
 ```
+
+The ROS distribution is one switch (2026-11-05): `[feature.jazzy]` / `[feature.lyrical]` in
+`pixi.toml` carry the RoboStack channel, the mutex pin, the Python pin and the Zenoh config paths;
+`default` / `typed` / `viz` / `dev` are Jazzy and resolve to the same packages as before. What the
+Lyrical rehearsal found and what still blocks a migration: rig-nodes `docs/ros-distro-switch.md`.
 
 Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 

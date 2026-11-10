@@ -114,7 +114,10 @@ arena visualization stay here; the Python arena library + headless runner go to
 `LED-Display_pyDisplayTools` (LAB-337); shared ROS 2 infrastructure lives in **`reiserlab/rig-nodes`**
 (`rig_interfaces`, the device adapters + simulators, `rig_nodes.recorder` / `mcap_index` / `cdr` /
 `foxglove_json`, `rig_nodes.supervise`, the Zenoh configs; contract: its `CONTRACT.md`) and is INSTALLED
-into `rig/` as the pinned `rig_nodes` + `rig_interfaces` packages from that repo's channel. A node fix
+into `rig/` as the pinned `rig_nodes` + `rig_interfaces` packages from that repo's channel. The ROS distribution is one
+switch (2026-11-05): `[feature.jazzy]` / `[feature.lyrical]` in `rig/pixi.toml` and in rig-nodes carry the
+RoboStack channel + mutex + Python pins; never spell `ros-jazzy-*` outside a distro feature (rig-nodes
+`docs/ros-distro-switch.md`). A node fix
 is tested here with `pixi install -e dev` (rig-nodes `main` built from source — git source dependencies,
 NEVER path dependencies on a sibling checkout: pixi validates every environment's source paths before
 installing any environment, which broke `pixi install` on rig PCs on 2026-10-27); a release of the set
