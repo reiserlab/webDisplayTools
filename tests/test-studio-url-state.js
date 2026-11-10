@@ -451,6 +451,47 @@ check(
 );
 check('encode drops a replay without a valid repo', U.encode({ replay: RL, repo: 'bad repo' }), '');
 
+// ── remote param (LAB-357 remote-control mode) ───────────────────────────────
+console.log('\n=== remote param ===');
+d = U.decode('?remote=1', { allowedKeys: ALLOWED });
+check('remote=1 requested', d.state.remote, true);
+checkBool('remote=1 does not warn', d.warnings.length === 0, d.warnings.join('|'));
+check('remote=1 lands in Run', d.state.mode, 'run');
+d = U.decode('?remote=0', { allowedKeys: ALLOWED });
+check('remote=0 → not requested', d.state.remote, undefined);
+d = U.decode('?remote=yes', { allowedKeys: ALLOWED });
+check('remote=yes dropped', d.state.remote, undefined);
+checkBool(
+    'remote=yes warns',
+    d.warnings.some((w) => /remote/.test(w))
+);
+check(
+    'encode emits remote=1 while the mode is on',
+    U.encode({ mode: 'run', remote: true }),
+    '?remote=1'
+);
+check('encode omits remote when off', U.encode({ mode: 'run', remote: false }), '');
+check(
+    'encodeApp keeps remote beside the protocol key and the rig',
+    U.encodeApp({ mode: 'run', protocolKey: 'looming_v3', rigKey: 'test_rig_1', remote: true }),
+    '?p=looming_v3&rig=test_rig_1&remote=1'
+);
+check(
+    'encodeApp keeps remote on a course-repo link',
+    U.encodeApp({
+        mode: 'run',
+        repo: 'reiserlab/cshl-2026-course',
+        repoPath: 'protocols/b/x.yaml',
+        remote: true
+    }),
+    '?repo=reiserlab/cshl-2026-course&p=protocols/b/x.yaml&remote=1'
+);
+check(
+    'remote round-trips through encodeApp → decode',
+    U.decode(U.encodeApp({ mode: 'run', remote: true }), { allowedKeys: ALLOWED }).state.remote,
+    true
+);
+
 console.log('\n=== Summary ===');
 console.log(`${totalChecks - failures} / ${totalChecks} checks passed`);
 process.exit(failures ? 1 : 0);

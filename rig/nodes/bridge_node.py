@@ -38,6 +38,12 @@ What is NEW (small, and all of it is visible in the log):
     at log close / export, so a run carries its own transport health.
   * `/rig/host` (rig_nodes.host_monitor: CPU per core, memory, disk, network, GPU, top processes) is
     recorded into the bag on arrival, so every run carries the PC's pressure alongside it.
+  * remote-control relay (LAB-357, nodes/remote_relay.py): `hello_ack` says `remote: true`; ONE Studio
+    socket attaches as the executor (`remote_attach`), a controller's `run_request` — a ROS message on
+    `/arena/run_request` (String JSON; the default, so a ROS sequencer starts a run natively) or the same
+    object on a WebSocket — is forwarded to it and the Studio's `run_status` goes back to that controller,
+    onto `/arena/run_status` (String JSON, live) and into the run's bag. A terminal status is forwarded only after the run's bag is
+    closed, and carries its path. The Studio still executes the steps; nothing here drives the arena.
 
 Not supported here (by design of the PoC): the `fictrac_port` config key cannot re-bind
 the socket — the adapter owns it. The request is acknowledged with a warning.
@@ -103,6 +109,7 @@ from rig_nodes._common import mono_ns, probe_interfaces, raise_timer_resolution,
 from rig_nodes.mcap_index import needs_recovery, recover_bag  # noqa: E402
 from rig_nodes.recorder import PROFILES, STRING_TYPE, Recorder  # noqa: E402
 from mcap_convert import convert_bag  # noqa: E402
+from remote_relay import ROS as ROS_ORIGIN, RemoteRelay  # noqa: E402  (pure bookkeeping, no ROS imports)
 from _rows import FLAG_BAD_FRAME, KF_TAG, fictrac_extras, is_bad_frame_tag, kf_row, parse_fictrac_line  # noqa: E402  (one encoder for the node and the converter)
 
 # Typed messages only when the package imports AND serializes (pixi's `typed` env, or a
@@ -160,6 +167,13 @@ FICTRAC_FRAME_TOPIC = "/fictrac/frame"  # typed rig_interfaces/FicTracFrame
 BROWSER_TOPIC = "/arena/browser"
 EVENT_TOPIC = "/arena/event"
 SESSION_TOPIC = "/arena/session"
+# Remote-control mode (LAB-357): every run_status the Studio sends for a remotely started run, plus
+# the ones this gateway originates (rejected / Studio disconnected). Live topic + the run's bag.
+RUN_STATUS_TOPIC = "/arena/run_status"
+# The controller side on the ROS graph: the SAME JSON object as the WebSocket run_request
+# ({id, action: run|stop|status, name, protocol, intent, metadata, client?}), as std_msgs/String.
+# Every answer to it goes out on /arena/run_status; a client matches on `id`.
+RUN_REQUEST_TOPIC = "/arena/run_request"
 ARENA_FRAME_TYPE = "rig_interfaces/msg/ArenaFrame"
 FICTRAC_FRAME_TYPE = "rig_interfaces/msg/FicTracFrame"
 KINEFLY_TOPIC = "/kinefly/raw"
@@ -355,7 +369,7 @@ class RecordingLogWriter(B.LogWriter):
     def topics(self) -> dict[str, str]:
         """Topic → type for the bag (all of them, so a run documents what it could hold)."""
         t = {
-            SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE,
+            SESSION_TOPIC: STRING_TYPE, BROWSER_TOPIC: STRING_TYPE, EVENT_TOPIC: STRING_TYPE, RUN_STATUS_TOPIC: STRING_TYPE, RUN_REQUEST_TOPIC: STRING_TYPE,
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
             SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
             SIPM_CMD_TOPIC: STRING_TYPE, SIPM_REPLY_TOPIC: STRING_TYPE, SIPM_STATUS_TOPIC: STRING_TYPE,
@@ -440,6 +454,26 @@ class RecordingLogWriter(B.LogWriter):
         seq = self.next_seq()
         self._record(BROWSER_TOPIC, {"seq": seq, "rx_ms": B.now_ms() if rx_ms is None else rx_ms, "raw": text, "line": False})
         return seq
+
+    def record_run_status(self, msg: dict) -> bool:
+        """A remote-control run_status (LAB-357): bag only, `/arena/run_status`, with the writer's
+        `seq` like the other bridge-side streams. Never a run-log line — the behavior_v2 NDJSON is
+        derived and FicTrac-only; the converter ignores this topic. False when no bag is open."""
+        if not self._fh or self.rec is None:
+            return False
+        self.rec.write_json(RUN_STATUS_TOPIC, {"seq": self.next_seq(), **msg})
+        return True
+
+    def record_run_request(self, text: str, rx_ms: int) -> bool:
+        """A run_request that arrived on the ROS topic: bag only, `/arena/run_request`, the message
+        as received (String, the JSON text), stamped with the gateway's receive time. The
+        WebSocket twin is recorded on /arena/browser (record_browser). False when no bag is open."""
+        if not self._fh or self.rec is None:
+            return False
+        m = String()
+        m.data = text
+        self.rec.write_msg(RUN_REQUEST_TOPIC, m, t_ns=int(rx_ms) * 1_000_000)
+        return True
 
     def write_event(self, obj: dict, record: bool = True) -> None:
         if not self._fh:
@@ -658,10 +692,23 @@ class RosHub(B.Hub):
         self._log = log
         self._typed = typed
         self.deriver = FrameDeriver(ball_mm)
+        # async fn(websocket), called once when a client's socket has closed (bridge.py's Hub has
+        # no such hook): the remote-control relay clears an executor / owner that went away.
+        self.on_disconnect = None
         # The parsed columns of the FicTrac line the consumer is feeding to Pipeline.handle_line
         # right now (set just before the call; handle_line publishes synchronously inside it, and
         # the consumer awaits one line at a time, so the slot is always this frame's).
         self.fields: list[float] | None = None
+
+    async def serve_client(self, websocket) -> None:
+        try:
+            await super().serve_client(websocket)  # bridge.py's loop, unchanged
+        finally:
+            if self.on_disconnect is not None:
+                try:
+                    await self.on_disconnect(websocket)
+                except Exception as exc:  # a bookkeeping error must not take the server task down
+                    print(f"[bridge-node] disconnect hook failed: {exc!r}", file=sys.stderr)
 
     async def publish(self, msg: dict) -> None:
         await super().publish(msg)  # the WebSocket hub message to the Studio: unchanged
@@ -692,6 +739,10 @@ class BridgeNode(Node):
         self.stats = {"fictrac": SourceStats("fictrac"), "kinefly": SourceStats("kinefly"), **{c: SourceStats(c) for c in CONNECTOR_TOPICS}}
         self.frame_pub = self.create_publisher(ArenaFrame if typed else String, FRAME_TOPIC, FRAME_QOS)
         self.browser_pub = self.create_publisher(String, BROWSER_TOPIC, RAW_QOS)
+        self.run_status_pub = self.create_publisher(String, RUN_STATUS_TOPIC, RAW_QOS)  # remote-control relay (LAB-357)
+        # fn(text) on the asyncio loop for every /arena/run_request message; set by run() once the relay exists.
+        self.on_run_request = None
+        self.create_subscription(String, RUN_REQUEST_TOPIC, self._run_request, RAW_QOS, raw=True)
         # Studio → bridge connector_command relayed to the device node (LAB-303 connectors).
         self.cmd_pubs = {c: self.create_publisher(String, t["cmd"], RAW_QOS) for c, t in CONNECTOR_TOPICS.items()}
         if typed:
@@ -718,6 +769,16 @@ class BridgeNode(Node):
         rec = self._log.rec
         if rec is not None:
             rec.write_raw(topic, data)
+
+    def _run_request(self, data: bytes) -> None:
+        """A controller's run_request from the ROS graph → the relay, on the loop. The relay
+        records it (a `run` goes into the bag its run opens, which does not exist yet)."""
+        try:
+            text = deserialize_message(data, String).data
+        except Exception:
+            return
+        if self.on_run_request is not None:
+            self._loop.call_soon_threadsafe(self.on_run_request, text)
 
     @staticmethod
     def _envelope(data: bytes) -> dict | None:
@@ -884,9 +945,11 @@ async def run(args: argparse.Namespace) -> None:
     dispatch_34 = B.make_dispatcher(pipeline, log, inputs)  # unmodified bridge.py dispatcher
 
     async def dispatch(raw, websocket=None) -> None:
-        """bridge.py's dispatcher + two message kinds: `hello` gains the `connectors` list
-        (so the Studio's bridge client knows what it may drive; a ≤ 3.4 bridge never sends
-        it) and `connector_command` is relayed to the device node. Everything else is 3.4."""
+        """bridge.py's dispatcher + the gateway's own message kinds: `hello` gains the
+        `connectors` list (so the Studio's bridge client knows what it may drive; a ≤ 3.4 bridge
+        never sends it) and `remote: true`; `connector_command` is relayed to the device node;
+        `remote_attach` / `run_request` / `run_status` are the remote-control relay (LAB-357,
+        remote_relay.py — never run-log lines). Everything else is 3.4."""
         text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
         live = String()
         live.data = json.dumps({"rx_ms": B.now_ms(), "raw": text}, separators=(",", ":"))
@@ -901,7 +964,16 @@ async def run(args: argparse.Namespace) -> None:
             log.write_inbound(text)
             await ws_reply(websocket, {"type": "hello_ack", "bridge": B.BRIDGE_VERSION, "levels": list(B.LOG_LEVELS),
                                        "level": log.level, "logging": log.active, "connectors": sorted(CONNECTORS),
-                                       "record": "mcap", "typed": typed, "packages": PACKAGES})
+                                       "record": "mcap", "typed": typed, "packages": PACKAGES, "remote": True})
+            return
+        if kind == "remote_attach":
+            await relay.on_attach(websocket, obj)
+            return
+        if kind == "run_request":
+            await relay.on_request(websocket, obj, text)
+            return
+        if kind == "run_status":
+            await relay.on_status(websocket, obj)
             return
         if kind == "connector_command":
             await on_connector_command(obj, websocket, text)
@@ -938,6 +1010,44 @@ async def run(args: argparse.Namespace) -> None:
 
     node = BridgeNode(loop, queue, on_kinefly, on_connector, log, typed)
 
+    # ── remote-control relay (LAB-357): Studio = executor, another program = controller ──
+    def publish_run_status(msg: dict, record_only: bool = False) -> None:
+        if not record_only:
+            m = String()
+            m.data = json.dumps(msg, separators=(",", ":"))
+            node.run_status_pub.publish(m)
+        log.record_run_status(msg)
+
+    def close_run_log() -> dict:
+        log.close()  # on_close's connector_status lines, logging_stopped, the bag closed + re-indexed
+        return log.last_bag
+
+    relay = RemoteRelay(
+        send=ws_reply,
+        publish=publish_run_status,
+        log_active=lambda: log.active,
+        log_bag=lambda: str(Path(log.bag_name).resolve()) if log.bag_name else None,
+        close_log=close_run_log,
+        record_request=lambda raw_text, rx, ros: (log.record_run_request(raw_text, rx) if ros else log.record_browser(raw_text, rx_ms=rx)),
+        warn=lambda text: print(f"[remote] {text}", file=sys.stderr),
+    )
+
+    def on_ros_run_request(text: str) -> None:
+        """/arena/run_request → the same relay as the WebSocket run_request. Anything that is not a
+        JSON object is dropped with a note: there is no id to answer under."""
+        try:
+            obj = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            obj = None
+        if not isinstance(obj, dict):
+            print(f"[remote] {RUN_REQUEST_TOPIC}: not a JSON object — ignored", file=sys.stderr)
+            return
+        task = loop.create_task(relay.on_request(ROS_ORIGIN, obj, text))
+        task.add_done_callback(lambda t: t.cancelled() or t.exception() is None
+                               or print(f"[remote] {RUN_REQUEST_TOPIC} handler failed: {t.exception()!r}", file=sys.stderr))
+
+    node.on_run_request = on_ros_run_request
+
     def on_log_open() -> None:
         """A new file: ONE ms base (the pipeline's t0 = the log's open stamp; bridge 3.4 took
         two now_ms() samples a few µs apart), note where its frames come from, and scope the
@@ -964,6 +1074,7 @@ async def run(args: argparse.Namespace) -> None:
                            "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )
+        relay.on_log_open()  # a remote run's bag: its run_request + the statuses sent before it opened
 
     def on_log_close() -> None:
         """One connector_status line per source that produced anything, before the file closes."""
@@ -977,6 +1088,7 @@ async def run(args: argparse.Namespace) -> None:
         on_log_open()
 
     hub = RosHub(dispatch, node.frame_pub, log, typed, ball_mm=args.ball_mm)
+    hub.on_disconnect = relay.on_disconnect
     pipeline.hub = hub
     log._hub = hub
 
@@ -989,6 +1101,10 @@ async def run(args: argparse.Namespace) -> None:
             for cid, p in list(pending.items()):
                 if time.monotonic() - p["t"] > 120.0:  # the Studio gave up long ago (default 10 s)
                     pending.pop(cid, None)
+            try:
+                await relay.tick()  # a forwarded run request the Studio never answered
+            except Exception as exc:  # the watchdog must outlive a relay bookkeeping error
+                print(f"[remote] tick failed: {exc!r}", file=sys.stderr)
             if not log.active:
                 continue
             now = time.monotonic()

@@ -2,7 +2,7 @@
  * studio-url-state.js — Arena Studio URL state codec (#107, DOM-free, testable).
  *
  * Encodes/decodes the shareable link params: mode / p / lib / set / rig / repo
- * / advanced.
+ * / advanced / soak / remote.
  * Shareability boundary (design §9): `p`/`lib` resolve ONLY to committed
  * protocol keys (validated against protocols/index.json by the caller); a
  * locally file-picked YAML has NO shareable URL, so encode() omits p/set when
@@ -224,6 +224,16 @@
             if (soak === '1') state.soak = true;
             else if (soak !== '0') warnings.push('Ignored soak=' + soak + ' (expected 0 or 1)');
         }
+        // remote (LAB-357) — `remote=1` REQUESTS remote-control mode: the page becomes a
+        // display and an external program starts the runs through the rig gateway. The app
+        // enters once the controller and the bridge are connected, and keeps the parameter
+        // in the URL while the mode is on. Here it is just a validated flag.
+        const remote = params.get('remote');
+        if (remote != null) {
+            if (remote === '1') state.remote = true;
+            else if (remote !== '0')
+                warnings.push('Ignored remote=' + remote + ' (expected 0 or 1)');
+        }
         const adv = params.get('advanced');
         if (adv != null) {
             if (adv === '1') state.advanced = true;
@@ -272,6 +282,9 @@
         // soak: emitted only when the soak driver is armed in this tab (same
         // clean-URL rule as advanced — a plain bench tab never carries it).
         if (s.soak) params.set('soak', '1');
+        // remote: emitted only while remote-control mode is on (or requested and waiting
+        // for the connections) in this tab — same clean-URL rule.
+        if (s.remote) params.set('remote', '1');
         // URLSearchParams percent-encodes '/', which is legal un-encoded in a
         // query string (RFC 3986) — keep repo/path params human-readable.
         const q = params.toString().replace(/%2F/gi, '/');
@@ -293,7 +306,8 @@
      * `advanced` must be true ONLY when advanced mode is active AND was
      * URL-requested (the caller enforces this; a remembered-unlocked browser
      * passes false to keep a clean URL, mirroring the derived-rig rule).
-     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath, advanced}
+     * `remote` must be true ONLY while remote-control mode is on or requested in this tab.
+     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath, advanced, soak, remote}
      * @returns {string} query string (leading '?', or '' when all defaults)
      */
     function encodeApp(app) {
@@ -306,7 +320,8 @@
                 replay: a.replayPath,
                 rig: a.rigKey || undefined,
                 advanced: a.advanced || undefined,
-                soak: a.soak || undefined
+                soak: a.soak || undefined,
+                remote: a.remote || undefined
             });
         }
         if (a.repo && a.repoPath) {
@@ -317,6 +332,7 @@
                 rig: a.rigKey || undefined,
                 advanced: a.advanced || undefined,
                 soak: a.soak || undefined,
+                remote: a.remote || undefined,
                 source: 'committed'
             });
         }
@@ -326,6 +342,7 @@
             rig: a.rigKey || undefined,
             advanced: a.advanced || undefined,
             soak: a.soak || undefined,
+            remote: a.remote || undefined,
             source: a.protocolKey ? 'committed' : 'local'
         });
     }
