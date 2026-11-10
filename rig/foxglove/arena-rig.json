@@ -198,10 +198,10 @@
           "showLine": false
         }
       ],
-      "showXAxisLabels": true,
+      "showXAxisLabels": false,
       "showYAxisLabels": true,
       "showLegend": false,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -220,10 +220,10 @@
           "color": "#56B4E9"
         }
       ],
-      "showXAxisLabels": true,
+      "showXAxisLabels": false,
       "showYAxisLabels": true,
       "showLegend": false,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -247,10 +247,10 @@
           "color": "#8b949e"
         }
       ],
-      "showXAxisLabels": true,
+      "showXAxisLabels": false,
       "showYAxisLabels": true,
       "showLegend": true,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -292,7 +292,7 @@
       "showXAxisLabels": true,
       "showYAxisLabels": true,
       "showLegend": true,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -309,10 +309,10 @@
           "color": "#E69F00"
         }
       ],
-      "showXAxisLabels": true,
+      "showXAxisLabels": false,
       "showYAxisLabels": true,
       "showLegend": false,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -339,7 +339,7 @@
       "showXAxisLabels": true,
       "showYAxisLabels": true,
       "showLegend": true,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -364,10 +364,10 @@
           "lineSize": 0.5
         }
       ],
-      "showXAxisLabels": true,
+      "showXAxisLabels": false,
       "showYAxisLabels": true,
       "showLegend": true,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -384,10 +384,10 @@
           "color": "#D55E00"
         }
       ],
-      "showXAxisLabels": true,
+      "showXAxisLabels": false,
       "showYAxisLabels": true,
       "showLegend": false,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -414,7 +414,7 @@
       "showXAxisLabels": true,
       "showYAxisLabels": true,
       "showLegend": true,
-      "legendDisplay": "top",
+      "legendDisplay": "floating",
       "showPlotValuesInLegend": false,
       "isSynced": true,
       "xAxisVal": "timestamp",
@@ -460,7 +460,7 @@
       "activeTabIdx": 0,
       "tabs": [
         {
-          "title": "Behavior",
+          "title": "Overview",
           "layout": {
             "direction": "column",
             "first": "StateTransitions!run",
@@ -470,26 +470,26 @@
               "second": {
                 "direction": "column",
                 "first": "Plot!turning",
-                "second": "Plot!walking",
-                "splitPercentage": 50.0
+                "second": {
+                  "direction": "column",
+                  "first": "Plot!walking",
+                  "second": "Plot!rates",
+                  "splitPercentage": 50.0
+                },
+                "splitPercentage": 33.3
               },
-              "splitPercentage": 33.3
+              "splitPercentage": 25.0
             },
-            "splitPercentage": 18
+            "splitPercentage": 12
           }
         },
         {
           "title": "Timing",
           "layout": {
             "direction": "column",
-            "first": "Plot!rates",
-            "second": {
-              "direction": "column",
-              "first": "Plot!lag",
-              "second": "Plot!cameraloss",
-              "splitPercentage": 50.0
-            },
-            "splitPercentage": 33.3
+            "first": "Plot!lag",
+            "second": "Plot!cameraloss",
+            "splitPercentage": 50.0
           }
         },
         {

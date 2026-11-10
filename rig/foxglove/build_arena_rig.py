@@ -4,6 +4,13 @@
 Composition follows Foxglove's own example layouts (a large view + a tabbed column of full-width,
 titled panels with fixed series colors). Every topic is one that viz_node / stimulus_node / the
 rig-nodes host monitor publish today.
+
+Two rules from the first live run (ww18, 2026-11-10):
+* Everything watched DURING a run is on the first tab (Overview). A Foxglove tab that is not showing
+  is not subscribed, so on a live connection a plot starts empty each time its tab is opened; the
+  other tabs (Timing, Host, Health) are for diagnosis and are expected to start empty.
+* The data gets the space: legends float over the plot (or are off when the title names the one
+  series), and only the bottom plot of a stack shows its time axis (the plots are synced).
 """
 import json
 import sys
@@ -21,7 +28,7 @@ def plot(title, paths, legend=True, **kw):
     return {
         "foxglovePanelTitle": title, "paths": paths,
         "showXAxisLabels": True, "showYAxisLabels": True,
-        "showLegend": legend, "legendDisplay": "top", "showPlotValuesInLegend": False,
+        "showLegend": legend, "legendDisplay": "floating", "showPlotValuesInLegend": False,
         "isSynced": True, "xAxisVal": "timestamp", "followingViewWidth": 60, **kw,
     }
 
@@ -44,6 +51,13 @@ def stack(panels):
     if len(panels) == 1:
         return panels[0]
     return split("column", panels[0], stack(panels[1:]), round(100 / len(panels), 1))
+
+
+def plots(panels):
+    """A stack of synced plots: only the bottom one keeps its time axis labels."""
+    for p in panels[:-1]:
+        C[p]["showXAxisLabels"] = False
+    return stack(panels)
 
 
 def tab(tabs):
@@ -76,7 +90,7 @@ C["Indicator!camera"] = bulb("Camera", "/viz/bias/state.data",
                              [rule("=", "recording", OK, "recording"), rule("=", "preview", WARN, "preview"),
                               rule("=", "idle", WARN, "idle"), rule("=", "unreachable", BAD, "unreachable")])
 
-# ---- tab 1: the experiment ------------------------------------------------------------------
+# ---- tab 1 (Overview): everything watched during a run ------------------------------------------------------------------
 C["StateTransitions!run"] = {
     "foxglovePanelTitle": "Trial",
     "paths": [{"value": "/viz/arena/condition.data", "timestampMethod": "receiveTime", "label": "condition"},
@@ -93,7 +107,7 @@ C["Plot!walking"] = plot("Walking (deg/s of ball rotation)",
                          [series("/viz/fictrac/fwd_dps.data", "forward", FLY),
                           series("/viz/fictrac/side_dps.data", "sideways", GRAY)])
 
-# ---- tab 2: is the rig keeping time ---------------------------------------------------------
+# ---- rates go on the Overview; tab 2 (Timing): is the rig keeping time ---------------------------------------------------------
 C["Plot!rates"] = plot("Rates (Hz)",
                        [series("/viz/fictrac/rate_hz.data", "FicTrac", FLY),
                         series("/viz/arena/display_rate_hz.data", "arena display", ARENA),
@@ -128,10 +142,10 @@ C["RawMessages!lasterror"] = {"foxglovePanelTitle": "Last error", "topicPath": "
 C["RosOut!log"] = {"foxglovePanelTitle": "ROS log (live only)", "searchTerms": [], "minLogLevel": 3, "nameFilter": {}}
 
 C["Tab!main"] = tab([
-    ("Behavior", split("column", "StateTransitions!run",
-                       stack(["Plot!position", "Plot!turning", "Plot!walking"]), 18)),
-    ("Timing", stack(["Plot!rates", "Plot!lag", "Plot!cameraloss"])),
-    ("Host", split("column", stack(["Plot!cpu", "Plot!stall", "Plot!memory"]), "Table!procs", 62)),
+    ("Overview", split("column", "StateTransitions!run",
+                       plots(["Plot!position", "Plot!turning", "Plot!walking", "Plot!rates"]), 12)),
+    ("Timing", plots(["Plot!lag", "Plot!cameraloss"])),
+    ("Host", split("column", plots(["Plot!cpu", "Plot!stall", "Plot!memory"]), "Table!procs", 62)),
     ("Health", split("column", "DiagnosticSummary!health",
                      split("column", "RawMessages!stimulus",
                            split("column", "RawMessages!lasterror", "RosOut!log", 30), 40), 30)),
