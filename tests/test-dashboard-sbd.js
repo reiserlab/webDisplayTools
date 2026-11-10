@@ -26,6 +26,71 @@ function check(name, fn) {
 }
 
 // ---- classification -----------------------------------------------------
+check('optomotor_led_test / optomotor_test_60deg(_tf) → family optomotor, not p0', () => {
+    const led = A.protocolInfo({ protocol_filename: 'optomotor_led_test.yaml' }, []);
+    assert.strictEqual(led.family, 'optomotor');
+    assert.strictEqual(led.label, 'optomotor ± opto LED (36° grating)');
+    const deg60 = A.protocolInfo({ protocol_filename: 'optomotor_test_60deg.yaml' }, []);
+    assert.strictEqual(deg60.label, 'optomotor ± opto LED (60° grating)');
+    assert.strictEqual(deg60.optomotorGratingDeg, 60);
+    const tf = A.protocolInfo({ protocol_filename: 'optomotor_test_60deg_tf.yaml' }, []);
+    assert.strictEqual(tf.label, 'optomotor ± opto LED (60° grating, temporal frequency variable)');
+    // condition names alone (a renamed copy): grating_cw_noled is NOT a p0 level
+    assert.strictEqual(
+        A.protocolInfo({ protocol_filename: 'x.yaml' }, [
+            'all_on',
+            'grating_cw_noled',
+            'gap',
+            'grating_ccw_led'
+        ]).family,
+        'optomotor'
+    );
+    // the real p0 protocol still classifies as p0
+    assert.strictEqual(
+        A.protocolInfo({ protocol_filename: 'p0_opto_intensity_short.yaml' }, ['grating_cw_3'])
+            .family,
+        'p0'
+    );
+});
+
+check('SBD revision in the label: coupled v2 / v3, bias40 v2, uncoupled', () => {
+    const v3 = A.protocolInfo(
+        { protocol_filename: 'p3-sbd-placelearning-coupled-v3-led14.yaml' },
+        []
+    );
+    assert.strictEqual(v3.family, 'sbd-place');
+    assert.strictEqual(v3.sbdVariant, 'coupled');
+    assert.strictEqual(v3.sbdVersion, 'v3');
+    assert.strictEqual(v3.label, 'SBD place learning (coupled v3)');
+    const v2 = A.protocolInfo(
+        { protocol_filename: 'p3-sbd-placelearning-coupled-v2-led10.yaml' },
+        []
+    );
+    assert.strictEqual(v2.label, 'SBD place learning (coupled v2)');
+    const bias = A.protocolInfo(
+        { protocol_filename: 'p3-sbd-placelearning-coupled-bias40-led20-v2.yaml' },
+        []
+    );
+    assert.strictEqual(bias.label, 'SBD place learning (bias v2)');
+    assert.strictEqual(
+        A.protocolInfo({ protocol_filename: 'p3-sbd-placelearning-uncoupled-led20-v2.yaml' }, [])
+            .label,
+        'SBD place learning (uncoupled v2)'
+    );
+    assert.strictEqual(
+        A.protocolInfo({ protocol_filename: 'p3-sbd-placelearning-led5.yaml' }, []).sbdVersion,
+        'v1'
+    );
+    // a renamed v3 copy is recognised from its sham stages
+    const renamed = A.protocolInfo({ protocol_filename: 'x.yaml' }, [
+        'sham_preprobe',
+        'preprobe',
+        'train_plus',
+        'probe_mid'
+    ]);
+    assert.strictEqual(renamed.label, 'SBD place learning (v3)');
+});
+
 check('filename p3-sbd-placelearning-led5 → sbd-place (base), not a p3 family', () => {
     const info = A.protocolInfo({ protocol_filename: 'p3-sbd-placelearning-led5.yaml' }, []);
     assert.strictEqual(info.family, 'sbd-place');

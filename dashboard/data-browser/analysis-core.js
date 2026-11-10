@@ -200,6 +200,23 @@
             .toLowerCase()
             .replaceAll('-', '_');
         const names = conditions || [];
+        // Optomotor ± opto LED (rig03 ports of the G4.1 p070 / p075 protocols:
+        // optomotor_led_test, optomotor_test_60deg, optomotor_test_60deg_tf, …) —
+        // checked BEFORE the p0 rule: their gratings are named grating_cw_noled /
+        // grating_cw_led, which the p0 regex (grating_cw_<level>) would claim.
+        const optomotorNames = names.some((name) => /^grating_(cw|ccw)_(no)?led$/.test(name));
+        if (filename.includes('optomotor') || optomotorNames) {
+            const grating = filename.match(/(\d+)deg/);
+            const extras = [
+                grating ? `${grating[1]}° grating` : '36° grating',
+                filename.includes('_tf') ? 'temporal frequency variable' : ''
+            ].filter(Boolean);
+            return {
+                family: 'optomotor',
+                label: `optomotor ± opto LED (${extras.join(', ')})`,
+                optomotorGratingDeg: grating ? Number(grating[1]) : 36
+            };
+        }
         if (
             filename.includes('p0') ||
             names.some((name) => /^(grating|bar)_(cw|ccw)_/.test(name))
@@ -226,11 +243,21 @@
                   : filename.includes('coupled')
                     ? 'coupled'
                     : 'base';
+            // Protocol revision (…-coupled-v2-led10, …-coupled-v3-led14, …-bias40-v2-…):
+            // v2 dropped the 5 s LED lead-in, v3 (p071 port) adds sham tests + a mid probe.
+            const rev = filename.match(/(?:^|_)v(\d+)(?:_|\.|$)/);
+            const version = rev ? `v${rev[1]}` : '';
+            const sbdNamesV3 = names.some((name) =>
+                /^(sham_preprobe|probe_mid|sham_probe)$/.test(name)
+            );
+            const detail = [variant === 'base' ? '' : variant, version || (sbdNamesV3 ? 'v3' : '')]
+                .filter(Boolean)
+                .join(' ');
             return {
                 family: 'sbd-place',
-                label:
-                    variant === 'base' ? 'SBD place learning' : `SBD place learning (${variant})`,
-                sbdVariant: variant
+                label: detail ? `SBD place learning (${detail})` : 'SBD place learning',
+                sbdVariant: variant,
+                sbdVersion: version || (sbdNamesV3 ? 'v3' : 'v1')
             };
         }
         const p3Patterns = {

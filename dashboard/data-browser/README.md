@@ -128,7 +128,14 @@ the tooltip naming the end state. Optional columns: age, experimenter, file size
 - Family `sbd-place`: the rig03 port of the G4.1 p058 / p066 / p067 place-learning
   protocols (`p3-sbd-placelearning-*`, `sbd-bias-*`). Classified before the p3
   families, since the filenames carry the `p3` prefix. Variants (base, coupled,
-  uncoupled, bias) are read from the filename and shown in the page notes.
+  uncoupled, bias) and the protocol revision (`-v2-`: no LED lead-in; `-v3-`: the
+  p071 port with sham tests and a mid probe) are read from the filename and shown
+  in the catalog label, e.g. "SBD place learning (coupled v3)". The v3 sham /
+  mid-probe stages are not yet scored here (the local sbd-dashboard scores them).
+- Family `optomotor`: the optomotor ± opto LED tests (`optomotor_led_test`,
+  `optomotor_test_60deg`, `optomotor_test_60deg_tf`; conditions `grating_cw_noled`,
+  `grating_cw_led`, …), classified before the p0 rule, which would otherwise claim
+  `grating_cw_*`. The label names the grating period; the pages are the generic set.
 - The unit of analysis is the closed-loop bout = one Mode-3 `trialParams`
   interval, not the step: the uncoupled control runs two bouts per step
   (`pair_m<k>_p<k>`). Each bout row carries its start frame and side, SD pattern
