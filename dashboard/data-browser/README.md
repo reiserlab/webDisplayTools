@@ -123,6 +123,40 @@ the tooltip naming the end state. Optional columns: age, experimenter, file size
 - Static PNG stimulus panoramas are selected from the logged p3 pattern ID and
   shifted into the same cue-aligned `-180..180` coordinate as the histogram
 
+### SBD visual place learning
+
+- Family `sbd-place`: the rig03 port of the G4.1 p058 / p066 / p067 place-learning
+  protocols (`p3-sbd-placelearning-*`, `sbd-bias-*`). Classified before the p3
+  families, since the filenames carry the `p3` prefix. Variants (base, coupled,
+  uncoupled, bias) and the protocol revision (`-v2-`: no LED lead-in; `-v3-`: the
+  p071 port with sham tests and a mid probe) are read from the filename and shown
+  in the label of a loaded run, e.g. "SBD place learning (coupled v3)". The run
+  catalog and the group filter show the family id (`sbd-place`), so all variants
+  and LED levels form one group. The v3 sham /
+  mid-probe stages are not yet scored here (the local sbd-dashboard scores them).
+- Family `optomotor`: the optomotor ± opto LED tests (`optomotor_led_test`,
+  `optomotor_test_60deg`, `optomotor_test_60deg_tf`; conditions `grating_cw_noled`,
+  `grating_cw_led`, …), classified before the p0 rule, which would otherwise claim
+  `grating_cw_*`. The label names the grating period; the pages are the generic set.
+  The filename must start with `optomotor_`: other protocols with "optomotor" in the
+  name and no opto LED (`g6_color_optomotor_test`, `simple_optomotor_protocol`) stay
+  generic.
+- The unit of analysis is the closed-loop bout = one Mode-3 `trialParams`
+  interval, not the step: the uncoupled control runs two bouts per step
+  (`pair_m<k>_p<k>`). Each bout row carries its start frame and side, SD pattern
+  id and picture rotation k (46→0, 47→1, 48→2, 49→3), and its own logged heat
+  span.
+- The safe zone comes from the first training bout's normalized
+  `led_activation` zone (default frames 158–199 + 0–7, centre 183); scoring is
+  in frame space, so the fixed heat map of the uncoupled control is scored the
+  same way as the coupled protocol.
+- Pages: time in the safe zone per bout (chance line), time to the first zone
+  entry (escape latency), LED-on fraction per bout, heading occupancy around
+  the zone centre with the zone and ramps shaded, and a stage preference index
+  `(t safe − t opposite) / (t safe + t opposite)` with "opposite" the zone
+  rotated 180° (the Florence / Ofstad probe PI). Group mode draws per-fly lines
+  and mean ± SEM; every page exports its bout rows as CSV.
+
 Unknown protocols receive generic condition-aligned turning, forward, and
 relative-heading pages instead of failing import.
 
