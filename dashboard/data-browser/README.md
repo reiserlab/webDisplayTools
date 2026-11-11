@@ -136,6 +136,9 @@ the tooltip naming the end state. Optional columns: age, experimenter, file size
   `optomotor_test_60deg`, `optomotor_test_60deg_tf`; conditions `grating_cw_noled`,
   `grating_cw_led`, …), classified before the p0 rule, which would otherwise claim
   `grating_cw_*`. The label names the grating period; the pages are the generic set.
+  The filename must start with `optomotor_`: other protocols with "optomotor" in the
+  name and no opto LED (`g6_color_optomotor_test`, `simple_optomotor_protocol`) stay
+  generic.
 - The unit of analysis is the closed-loop bout = one Mode-3 `trialParams`
   interval, not the step: the uncoupled control runs two bouts per step
   (`pair_m<k>_p<k>`). Each bout row carries its start frame and side, SD pattern

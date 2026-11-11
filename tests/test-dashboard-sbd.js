@@ -53,6 +53,36 @@ check('optomotor_led_test / optomotor_test_60deg(_tf) → family optomotor, not 
     );
 });
 
+check(
+    '"optomotor" inside a filename is not enough: protocols without an opto LED stay generic',
+    () => {
+        const cases = [
+            ['g6_color_optomotor_smoke.yaml', ['dark_pause', 'violet_pair_d100', 'blue_pair_d100']],
+            ['g6_color_optomotor_test.yaml', ['dark_pause', 'violet_pair_d25', 'blue_pair_d25']],
+            ['simple_optomotor_protocol.yaml', ['rightward_grating', 'leftward_grating']]
+        ];
+        for (const [file, conditions] of cases) {
+            // The catalog classifies from the filename alone; a loaded run adds the conditions.
+            assert.strictEqual(
+                A.protocolInfo({ protocol_filename: file }, []).family,
+                'generic',
+                file
+            );
+            assert.strictEqual(
+                A.protocolInfo({ protocol_filename: file }, conditions).family,
+                'generic',
+                file
+            );
+        }
+        // A folder in the stored name does not change the result, and hyphens count as underscores.
+        assert.strictEqual(
+            A.protocolInfo({ protocol_filename: 'protocols/rig03-sr/optomotor-led-test.yaml' }, [])
+                .family,
+            'optomotor'
+        );
+    }
+);
+
 check('SBD revision in the label: coupled v2 / v3, bias40 v2, uncoupled', () => {
     const v3 = A.protocolInfo(
         { protocol_filename: 'p3-sbd-placelearning-coupled-v3-led14.yaml' },

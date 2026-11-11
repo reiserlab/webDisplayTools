@@ -204,8 +204,13 @@
         // optomotor_led_test, optomotor_test_60deg, optomotor_test_60deg_tf, …) —
         // checked BEFORE the p0 rule: their gratings are named grating_cw_noled /
         // grating_cw_led, which the p0 regex (grating_cw_<level>) would claim.
+        // The filename rule is narrow on purpose: only a file whose name STARTS with
+        // optomotor_ is in this family. Other protocols have "optomotor" in the name
+        // but no opto LED (g6_color_optomotor_test, simple_optomotor_protocol); those
+        // stay generic.
         const optomotorNames = names.some((name) => /^grating_(cw|ccw)_(no)?led$/.test(name));
-        if (filename.includes('optomotor') || optomotorNames) {
+        const optomotorFile = /^optomotor_/.test(filename.split(/[\\/]/).pop());
+        if (optomotorFile || optomotorNames) {
             const grating = filename.match(/(\d+)deg/);
             const extras = [
                 grating ? `${grating[1]}° grating` : '36° grating',
