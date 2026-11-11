@@ -130,7 +130,9 @@ the tooltip naming the end state. Optional columns: age, experimenter, file size
   families, since the filenames carry the `p3` prefix. Variants (base, coupled,
   uncoupled, bias) and the protocol revision (`-v2-`: no LED lead-in; `-v3-`: the
   p071 port with sham tests and a mid probe) are read from the filename and shown
-  in the catalog label, e.g. "SBD place learning (coupled v3)". The v3 sham /
+  in the label of a loaded run, e.g. "SBD place learning (coupled v3)". The run
+  catalog and the group filter show the family id (`sbd-place`), so all variants
+  and LED levels form one group. The v3 sham /
   mid-probe stages are not yet scored here (the local sbd-dashboard scores them).
 - Family `optomotor`: the optomotor ± opto LED tests (`optomotor_led_test`,
   `optomotor_test_60deg`, `optomotor_test_60deg_tf`; conditions `grating_cw_noled`,
