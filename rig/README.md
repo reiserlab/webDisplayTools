@@ -1,5 +1,7 @@
 # ROS 2 bridge proof of concept (LAB-303)
 
+> **Setting up a machine?** Install recipe, host table and per-machine quirks: [`reiserlab/rig-nodes` → `SETUP.md`](https://github.com/reiserlab/rig-nodes/blob/main/SETUP.md). What this workspace adds on top (Studio ↔ gateway, Web Serial, course repo): [`SETUP.md`](SETUP.md) here.
+
 A bounded spike, not a product: can the web runner's bridge be a ROS 2 node graph while the
 **unmodified Arena Studio** keeps connecting to `ws://localhost:8765`, the **run log stays the
 same file every reader already accepts**, and the devices (FicTrac, Kinefly, BIAS) sit behind
@@ -37,6 +39,7 @@ untouched, so bridge 3.4 (`pixi run bridge` at the repo root) stays installed si
 ```bash
 cd rig
 pixi install              # RoboStack Jazzy ros-base + rmw_zenoh + rosbag2/MCAP + rig_nodes from the rig-nodes channel (≈1.3 GB)
+pixi install -e lyrical   # the migration rehearsal only: ROS 2 Lyrical Luth (Python 3.14) + rig-nodes built from git; no rig runs it
 pixi install -e typed     # + rig_interfaces (typed /fictrac/frame + /arena/frame), same RoboStack set, no compiler
 pixi run rig              # router + FicTrac adapter + bridge node        → Studio connects to ws://localhost:8765
 pixi run rig -- --kinefly --bias           # + Kinefly KF/1 adapter + BIAS node
@@ -45,6 +48,11 @@ pixi run rig -- --backlight --backlight-args "--port COM6"   # + the LED backlig
 pixi run rig -- --backlight --backlight-sim                  # + a simulated backlight controller (no hardware)
 pixi run test             # the acceptance run (≈ 60 s, no hardware, see below)
 ```
+
+The ROS distribution is one switch (2026-11-05): `[feature.jazzy]` / `[feature.lyrical]` in
+`pixi.toml` carry the RoboStack channel, the mutex pin, the Python pin and the Zenoh config paths;
+`default` / `typed` / `viz` / `dev` are Jazzy and resolve to the same packages as before. What the
+Lyrical rehearsal found and what still blocks a migration: rig-nodes `docs/ros-distro-switch.md`.
 
 Pieces, individually (each is also a `pixi run` task; `--help` on every script):
 

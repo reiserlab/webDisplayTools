@@ -2814,11 +2814,436 @@
         });
     }
 
+    // ---- SBD visual place learning (family 'sbd-place') -----------------
+    // Rig03 port of the G4.1 p058 / p066 / p067 protocols: pattern 46, a 90°
+    // LED-off safe zone on the bars|stripes seam, graded heat outside it, 40 s
+    // bouts opening ±90° outside the zone. One row per closed-loop bout from
+    // A.sbdBouts (the uncoupled control runs two bouts per step).
+    const SBD_STAGES = [
+        { key: 'preprobe', name: 'preprobe (uniform heat)', color: COLORS.cyan },
+        { key: 'training', name: 'training (heat outside the zone)', color: COLORS.magenta },
+        { key: 'probe', name: 'probe (uniform heat)', color: COLORS.green }
+    ];
+
+    function sbdLayout(extra) {
+        return {
+            paper_bgcolor: '#ffffff',
+            plot_bgcolor: '#ffffff',
+            font: { family: 'Inter, system-ui, sans-serif', color: COLORS.text },
+            margin: { l: 72, r: 30, t: 35, b: 62 },
+            height: 470,
+            hovermode: 'closest',
+            legend: { orientation: 'h', x: 0, y: 1.08 },
+            ...extra
+        };
+    }
+
+    function sbdVariantNote(runs) {
+        const variants = [
+            ...new Set(runs.map((run) => run.protocolInfo && run.protocolInfo.sbdVariant))
+        ].filter(Boolean);
+        return variants.length ? ` Variant: ${variants.join(', ')}.` : '';
+    }
+
+    function sbdPerRun(runs) {
+        return runs.map((run) => ({ run, ...A.sbdBouts(run) }));
+    }
+
+    function sbdBoutCsvRows(perRun, plot) {
+        return perRun.flatMap((item) =>
+            item.bouts.map((row) => ({
+                plot,
+                level: 'bout',
+                run_id: item.run.id,
+                stage: row.stage,
+                bout: row.bout == null ? '' : row.bout,
+                position: row.position,
+                condition: row.condition,
+                side: row.side,
+                start_frame: row.startFrame,
+                pattern_id: row.patternId,
+                rotation_k: row.rotationK == null ? '' : row.rotationK,
+                uniform_heat: row.uniformHeat,
+                samples: row.samples,
+                safe_fraction: row.safeFraction,
+                opposite_fraction: row.oppositeFraction,
+                led_on_fraction: row.ledOnFraction,
+                first_entry_s: row.firstEntrySec,
+                preference_index: row.preference,
+                zone_size_frames: item.zone.size,
+                zone_center_frame: item.zone.centerIndex
+            }))
+        );
+    }
+
+    /**
+     * Sequence page: one value per bout along the run (0 = preprobe, 1..N bouts,
+     * N+1 = probe). Group mode draws thin per-fly lines and the mean ± SEM.
+     */
+    function sbdSequencePage(runs, options, spec) {
+        const perRun = sbdPerRun(runs);
+        const traces = [];
+        const positions = [
+            ...new Set(perRun.flatMap((item) => item.bouts.map((row) => row.position)))
+        ]
+            .filter(Number.isFinite)
+            .sort((a, b) => a - b);
+        const lastPosition = positions.length ? positions[positions.length - 1] : 1;
+        const valueAt = (item, position) => {
+            const row = item.bouts.find((candidate) => candidate.position === position);
+            return row ? spec.value(row) : NaN;
+        };
+        if (options.mode === 'group' && options.showIndividuals) {
+            perRun.forEach((item) =>
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    x: item.bouts.map((row) => row.position),
+                    y: item.bouts.map((row) => spec.value(row)),
+                    name: item.run.id,
+                    showlegend: false,
+                    line: { color: 'rgba(60, 70, 80, 0.22)', width: 1 },
+                    marker: { size: 4, color: 'rgba(60, 70, 80, 0.35)' },
+                    text: sourceLabel(item.run),
+                    hovertemplate: `%{text}<br>bout %{x}<br>${spec.hover}<extra></extra>`
+                })
+            );
+        }
+        const means = positions.map((position) =>
+            A.mean(perRun.map((item) => valueAt(item, position)))
+        );
+        const errors = positions.map((position) =>
+            A.sem(perRun.map((item) => valueAt(item, position)))
+        );
+        traces.push({
+            type: 'scatter',
+            mode: 'lines+markers',
+            x: positions,
+            y: means,
+            name: options.mode === 'group' ? `mean ± SEM (${perRun.length} flies)` : spec.yLabel,
+            line: { color: COLORS.mean, width: 2 },
+            marker: { size: 7, color: COLORS.mean },
+            error_y:
+                options.mode === 'group'
+                    ? { type: 'data', array: errors, visible: true, color: COLORS.mean }
+                    : undefined,
+            hovertemplate: `bout %{x}<br>${spec.hover}<extra></extra>`
+        });
+        const shapes = [];
+        // preprobe / probe bands
+        [
+            { from: -0.5, to: 0.5, color: rgba(COLORS.cyan, 0.1) },
+            { from: lastPosition - 0.5, to: lastPosition + 0.5, color: rgba(COLORS.green, 0.1) }
+        ].forEach((band) =>
+            shapes.push({
+                type: 'rect',
+                xref: 'x',
+                yref: 'paper',
+                x0: band.from,
+                x1: band.to,
+                y0: 0,
+                y1: 1,
+                fillcolor: band.color,
+                line: { width: 0 },
+                layer: 'below'
+            })
+        );
+        if (Number.isFinite(spec.reference)) {
+            shapes.push({
+                type: 'line',
+                xref: 'paper',
+                yref: 'y',
+                x0: 0,
+                x1: 1,
+                y0: spec.reference,
+                y1: spec.reference,
+                line: { color: COLORS.muted, width: 1, dash: 'dash' }
+            });
+        }
+        const tickvals = positions;
+        const ticktext = positions.map((position) =>
+            position === 0 ? 'pre' : position === lastPosition ? 'probe' : String(position)
+        );
+        return {
+            id: spec.id,
+            title: spec.title,
+            description: spec.description + sbdVariantNote(runs),
+            figure: {
+                data: traces,
+                layout: sbdLayout({
+                    shapes,
+                    xaxis: {
+                        title: 'bout (pre = preprobe)',
+                        tickvals,
+                        ticktext,
+                        range: [-0.7, lastPosition + 0.7],
+                        gridcolor: COLORS.grid
+                    },
+                    yaxis: {
+                        title: spec.yLabel,
+                        range: spec.yRange,
+                        gridcolor: COLORS.grid,
+                        zeroline: false
+                    }
+                })
+            },
+            csvRows: sbdBoutCsvRows(perRun, spec.id)
+        };
+    }
+
+    function sbdZonePage(runs, options) {
+        const zone = A.sbdZone(runs[0]);
+        return sbdSequencePage(runs, options, {
+            id: 'sbd-zone-occupancy',
+            title: 'SBD time in the safe zone per bout',
+            description: `Fraction of each bout's frame samples inside the LED-off safe zone (${zone.size} of 200 frames; dashed line = chance). Preprobe and probe run with uniform heat, so the same zone is scored there as a memory test.`,
+            value: (row) => (Number.isFinite(row.safeFraction) ? row.safeFraction * 100 : NaN),
+            yLabel: 'Time in the safe zone (%)',
+            yRange: [0, 100],
+            reference: zone.chance * 100,
+            hover: '%{y:.1f} % in the safe zone'
+        });
+    }
+
+    function sbdEntryPage(runs, options) {
+        return sbdSequencePage(runs, options, {
+            id: 'sbd-first-entry',
+            title: 'SBD time to the first safe-zone entry',
+            description:
+                'Seconds from the bout start to the first frame sample inside the safe zone. Every bout opens 90° outside the nearest zone edge, so this is the escape latency; a missing point means the fly never reached the zone in that bout.',
+            value: (row) => row.firstEntrySec,
+            yLabel: 'First zone entry (s)',
+            yRange: undefined,
+            reference: NaN,
+            hover: 'first entry at %{y:.1f} s'
+        });
+    }
+
+    function sbdLedPage(runs, options) {
+        return sbdSequencePage(runs, options, {
+            id: 'sbd-led-on',
+            title: 'SBD LED-on fraction per bout',
+            description:
+                "Fraction of each bout's frame samples on which the opto LED was on (heat zone including the ramps), from the bout's own logged led_activation. Uniform-heat bouts (preprobe, probe) are 100 % by design.",
+            value: (row) => (Number.isFinite(row.ledOnFraction) ? row.ledOnFraction * 100 : NaN),
+            yLabel: 'LED on (%)',
+            yRange: [0, 100],
+            reference: NaN,
+            hover: 'LED on %{y:.1f} % of the bout'
+        });
+    }
+
+    function sbdOccupancyPage(runs, options) {
+        const binCount = 100;
+        const zone = A.sbdZone(runs[0]);
+        const traces = [];
+        const csvRows = [];
+        SBD_STAGES.forEach((stage) => {
+            const perRun = runs.map((run) => A.sbdOccupancy(run, stage.key, binCount));
+            const angle = perRun[0] ? perRun[0].angle : [];
+            const mean = angle.map((_, index) =>
+                A.mean(perRun.map((hist) => (hist.samples ? hist.percent[index] : NaN)))
+            );
+            const smooth = A.circularBoxcar(mean, 5);
+            traces.push({
+                type: 'scatter',
+                mode: 'lines',
+                x: angle,
+                y: smooth,
+                name: stage.name,
+                line: { color: stage.color, width: 2.2 },
+                hovertemplate: `${stage.name}<br>%{x:.0f}° from the zone centre<br>%{y:.2f} %<extra></extra>`
+            });
+            perRun.forEach((hist, runIndex) =>
+                hist.angle.forEach((value, index) =>
+                    csvRows.push({
+                        plot: 'sbd-occupancy',
+                        level: 'bin',
+                        run_id: runs[runIndex].id,
+                        stage: stage.key,
+                        angle_deg: value,
+                        percent: hist.percent[index],
+                        samples: hist.samples
+                    })
+                )
+            );
+        });
+        const halfZone = (zone.size / 2) * (360 / A.SBD_FRAME_COUNT);
+        const ramp = 15;
+        const shapes = [
+            {
+                type: 'rect',
+                xref: 'x',
+                yref: 'paper',
+                x0: -halfZone,
+                x1: halfZone,
+                y0: 0,
+                y1: 1,
+                fillcolor: rgba(COLORS.green, 0.12),
+                line: { width: 0 },
+                layer: 'below'
+            },
+            ...[-1, 1].map((sign) => ({
+                type: 'rect',
+                xref: 'x',
+                yref: 'paper',
+                x0: sign * halfZone,
+                x1: sign * (halfZone + ramp),
+                y0: 0,
+                y1: 1,
+                fillcolor: rgba(COLORS.amber, 0.12),
+                line: { width: 0 },
+                layer: 'below'
+            })),
+            {
+                type: 'line',
+                xref: 'paper',
+                yref: 'y',
+                x0: 0,
+                x1: 1,
+                y0: 100 / binCount,
+                y1: 100 / binCount,
+                line: { color: COLORS.muted, width: 1, dash: 'dash' }
+            }
+        ];
+        return {
+            id: 'sbd-occupancy',
+            title: 'SBD heading occupancy around the safe zone',
+            description:
+                `Percent of frame samples per ${(360 / binCount).toFixed(1)}° bin, in degrees from the safe-zone centre (green = LED-off zone, amber = the 15° heat ramps, dashed = uniform chance), 5-bin circular boxcar, averaged across flies in group mode. Raw bins in the CSV.` +
+                sbdVariantNote(runs),
+            figure: {
+                data: traces,
+                layout: sbdLayout({
+                    shapes,
+                    xaxis: {
+                        title: 'Heading relative to the safe-zone centre (deg)',
+                        range: [-180, 180],
+                        dtick: 45,
+                        gridcolor: COLORS.grid
+                    },
+                    yaxis: {
+                        title: 'Occupancy (% of samples)',
+                        rangemode: 'tozero',
+                        gridcolor: COLORS.grid
+                    }
+                })
+            },
+            csvRows
+        };
+    }
+
+    function sbdPreferencePage(runs, options) {
+        const summaries = runs.map((run) => ({ run, summary: A.sbdStageSummary(run) }));
+        const traces = [];
+        const csvRows = [];
+        const x = SBD_STAGES.map((stage) => stage.key);
+        if (options.mode === 'group' && options.showIndividuals) {
+            summaries.forEach((item) =>
+                traces.push({
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    x,
+                    y: x.map((stage) => item.summary[stage].preference),
+                    name: item.run.id,
+                    showlegend: false,
+                    line: { color: 'rgba(60, 70, 80, 0.22)', width: 1 },
+                    marker: { size: 5, color: 'rgba(60, 70, 80, 0.4)' },
+                    text: sourceLabel(item.run),
+                    hovertemplate: '%{text}<br>%{x}<br>PI=%{y:.3f}<extra></extra>'
+                })
+            );
+        }
+        const means = x.map((stage) =>
+            A.mean(summaries.map((item) => item.summary[stage].preference))
+        );
+        const errors = x.map((stage) =>
+            A.sem(summaries.map((item) => item.summary[stage].preference))
+        );
+        traces.push({
+            type: 'bar',
+            x,
+            y: means,
+            name:
+                options.mode === 'group'
+                    ? `mean ± SEM (${summaries.length} flies)`
+                    : 'preference index',
+            marker: {
+                color: SBD_STAGES.map((stage) => rgba(stage.color, 0.55)),
+                line: { color: SBD_STAGES.map((stage) => stage.color), width: 1.5 }
+            },
+            error_y:
+                options.mode === 'group'
+                    ? { type: 'data', array: errors, visible: true, color: COLORS.mean }
+                    : undefined,
+            hovertemplate: '%{x}<br>PI=%{y:.3f}<extra></extra>'
+        });
+        summaries.forEach((item) =>
+            x.forEach((stage) => {
+                const s = item.summary[stage];
+                csvRows.push({
+                    plot: 'sbd-preference',
+                    level: 'fly_stage',
+                    run_id: item.run.id,
+                    stage,
+                    bouts: s.bouts,
+                    samples: s.samples,
+                    safe_fraction: s.safeFraction,
+                    led_on_fraction: s.ledOnFraction,
+                    preference_index: s.preference
+                });
+            })
+        );
+        return {
+            id: 'sbd-preference',
+            title: 'SBD place preference index by stage',
+            description:
+                'Time-weighted (t safe − t opposite) / (t safe + t opposite) over all frame samples of a stage, where "opposite" is the safe zone rotated by 180° (the Florence / Ofstad probe PI). +1 = always in the zone, −1 = always opposite; 0 = no place preference. Training pools every bout.' +
+                sbdVariantNote(runs),
+            figure: {
+                data: traces,
+                layout: sbdLayout({
+                    shapes: [
+                        {
+                            type: 'line',
+                            xref: 'paper',
+                            yref: 'y',
+                            x0: 0,
+                            x1: 1,
+                            y0: 0,
+                            y1: 0,
+                            line: { color: COLORS.muted, width: 1 }
+                        }
+                    ],
+                    xaxis: { title: 'stage', gridcolor: COLORS.grid },
+                    yaxis: {
+                        title: 'Preference index',
+                        range: [-1.05, 1.05],
+                        gridcolor: COLORS.grid,
+                        zeroline: false
+                    }
+                })
+            },
+            csvRows
+        };
+    }
+
+    function sbdPages(runs, options) {
+        return [
+            sbdZonePage(runs, options),
+            sbdEntryPage(runs, options),
+            sbdLedPage(runs, options),
+            sbdOccupancyPage(runs, options),
+            sbdPreferencePage(runs, options)
+        ];
+    }
+
     function buildPages(runs, options) {
         if (!runs.length) return [];
         const opts = { mode: 'single', showIndividuals: true, ...options };
         const families = [...new Set(runs.map((run) => run.protocolInfo.family))];
         if (families.length !== 1) return genericPages(runs, opts);
+        if (families[0] === 'sbd-place') return sbdPages(runs, opts);
         if (families[0] === 'p0') return [...p0TimePages(runs, opts), p0DosePage(runs, opts)];
         if (families[0] === 'p1')
             return [

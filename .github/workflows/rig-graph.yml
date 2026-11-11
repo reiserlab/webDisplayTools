@@ -1,0 +1,174 @@
+# The rig graph (rig/) in CI — the arena gateway harness `rig/tests/test_ros2_poc.py` (whole graph:
+# router, FicTrac + Kinefly + BIAS simulators and adapters, bridge node, Studio emulator, model fly,
+# crash phase) on the two ROS distributions the workspace knows (rig-nodes docs/ros-distro-switch.md):
+#
+#   jazzy    what the rigs run — the `default` environment from the committed lock, channel packages,
+#            nothing compiled. Blocking: a red run here means the rig workspace is broken.
+#   lyrical  the migration rehearsal — the `lyrical` environment builds rig-nodes from git on
+#            RoboStack Lyrical (Python 3.14). Allowed to fail: no rig runs it.
+#   watch    weekly (and on demand): re-solve `lyrical` against the LIVE RoboStack channel, print what
+#            moved (mutex set, rmw_zenoh, rosbag2, rclpy, Python) and run the harness on it. The lock in
+#            the repository is not touched; this is the "keep an eye on the channel" job.
+#
+# Windows is in the matrix because that is what the rig PCs run; ubuntu because it is cheap. macOS is
+# the developers' platform and is covered by hand (rig/SETUP.md host table). Path-filtered: only
+# changes under rig/ (or to this file) run it; the root `CI` workflow does not touch rig/.
+# One ROS graph per runner: the harness starts its own Zenoh router on 7447.
+name: rig graph
+
+on:
+    pull_request:
+        paths: ['rig/**', '.github/workflows/rig-graph.yml']
+    push:
+        branches: [main]
+        paths: ['rig/**', '.github/workflows/rig-graph.yml']
+    schedule:
+        - cron: '17 6 * * 1'   # Mondays 06:17 UTC: the channel watch
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: rig-graph-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+env:
+    # The rigs' pixi floor (rig/SETUP.md) and the pixi that writes rig/pixi.lock.
+    PIXI_VERSION: v0.83.0
+
+jobs:
+    jazzy:
+        name: jazzy (${{ matrix.os }})
+        if: github.event_name != 'schedule'
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-24.04, windows-2022]
+        runs-on: ${{ matrix.os }}
+        defaults:
+            run:
+                shell: bash
+                working-directory: rig
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  persist-credentials: false
+            - uses: prefix-dev/setup-pixi@v0.10.2
+              with:
+                  pixi-version: ${{ env.PIXI_VERSION }}
+                  run-install: false
+            - name: pixi install --locked (default = jazzy + the rig-nodes channel)
+              run: |
+                  pixi install --locked -e default
+                  pixi list | grep -E "^(rig_|ros2-distro-mutex|python |ros2-rclpy|ros2-rmw-zenoh-cpp)"
+                  # the released rig_nodes (channel 0.4.0) predates rig_nodes.runtime; the lyrical job prints that
+                  pixi run python -c "import rig_nodes, sys; print('rig_nodes', rig_nodes.__version__, 'python', sys.version.split()[0])"
+            - name: gateway registration + stimulus + viz (no graph)
+              run: |
+                  pixi run test-gateway
+                  pixi run test-stimulus
+                  pixi run test-viz
+            # The harness's timing tolerances are tuned for rig PCs (a 100 Hz graph + 8 processes on a 2-vCPU
+            # shared runner has missed `|Δms| worst ≤ 50 ms` and an epoch's start-frame tare by a frame). One
+            # retry on failure; a deterministic break fails twice. Follow-up: a `--ci` tolerance scale in the harness.
+            - name: the arena harness (whole graph, simulators, Studio emulator, crash phase)
+              run: pixi run test || { echo "::warning::harness failed once on this runner (timing-sensitive checks); retrying"; pixi run test; }
+
+    lyrical:
+        name: lyrical rehearsal (${{ matrix.os }}, allowed to fail)
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        timeout-minutes: 90
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-24.04, windows-2022]
+        runs-on: ${{ matrix.os }}
+        defaults:
+            run:
+                shell: bash
+                working-directory: rig
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  persist-credentials: false
+            - uses: prefix-dev/setup-pixi@v0.10.2
+              with:
+                  pixi-version: ${{ env.PIXI_VERSION }}
+                  run-install: false
+            # MAX_PATH: the rosidl build of rig_interfaces adds ~211 chars to the checkout path.
+            - name: Windows build root
+              if: runner.os == 'Windows'
+              run: pixi config set --local detached-environments 'C:\px'
+            - name: pixi install --locked -e lyrical (builds rig_nodes + rig_interfaces from git)
+              run: |
+                  pixi install --locked -e lyrical
+                  pixi list -e lyrical | grep -E "^(rig_|ros2-distro-mutex|python |ros2-rclpy|ros2-rmw-zenoh-cpp)"
+                  pixi run -e lyrical python -m rig_nodes.runtime
+            - name: typed package + gateway registration + stimulus + viz
+              run: |
+                  pixi run -e lyrical check-typed
+                  pixi run -e lyrical test-gateway
+                  pixi run -e lyrical test-stimulus
+                  pixi run -e lyrical test-viz
+            - name: the arena harness on Lyrical
+              run: pixi run -e lyrical test || { echo "::warning::harness failed once on this runner (timing-sensitive checks); retrying"; pixi run -e lyrical test; }
+
+    watch:
+        # Re-solve `lyrical` against today's RoboStack channel (the repository lock is NOT updated — the
+        # runner's copy only), print what moved, run the harness. A failure here is information about
+        # the channel, not about the code; the job is allowed to fail and the summary is in the log.
+        name: channel watch (lyrical re-solved against the live channel)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        timeout-minutes: 90
+        runs-on: ubuntu-24.04
+        defaults:
+            run:
+                shell: bash
+                working-directory: rig
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  persist-credentials: false
+            - uses: prefix-dev/setup-pixi@v0.10.2
+              with:
+                  pixi-version: ${{ env.PIXI_VERSION }}
+                  run-install: false
+            - name: what the committed lock pins
+              run: pixi list -e lyrical --no-install | grep -E "^(rig_|ros2-distro-mutex|python |ros2-rclpy|ros2-rmw-zenoh-cpp|ros2-rosbag2-py|ros2-rosbag2-storage-mcap)" || true
+            - name: re-solve lyrical against the live channel
+              run: |
+                  pixi update -e lyrical --json > update.json || true
+                  head -c 4000 update.json; echo
+                  python3 - <<'EOF'
+                  import json
+                  try:
+                      d = json.load(open("update.json"))
+                  except Exception as exc:
+                      print("no JSON report (nothing moved, or the report is not JSON):", exc); raise SystemExit(0)
+                  # Tolerant of the report's shape: every dict that names a package with a before/after is a change.
+                  moved = []
+                  def walk(x, path=()):
+                      if isinstance(x, dict):
+                          if "name" in x and ("before" in x or "after" in x):
+                              b, a = x.get("before") or {}, x.get("after") or {}
+                              moved.append((x["name"], b.get("version") if isinstance(b, dict) else b, a.get("version") if isinstance(a, dict) else a, "/".join(map(str, path))))
+                          for k, v in x.items():
+                              walk(v, path + (k,))
+                      elif isinstance(x, list):
+                          for v in x:
+                              walk(v, path)
+                  walk(d)
+                  print(f"{len(moved)} package changes in the re-solved lyrical environment")
+                  for name, before, after, where in sorted(moved):
+                      if name.startswith(("ros2-", "ros-lyrical", "python", "rig_")) or "zenoh" in name or "rosbag2" in name:
+                          print(f"   {name}: {before} -> {after}  ({where})")
+                  EOF
+                  pixi list -e lyrical | grep -E "^(rig_|ros2-distro-mutex|python |ros2-rclpy|ros2-rmw-zenoh-cpp|ros2-rosbag2-py|ros2-rosbag2-storage-mcap)"
+            - name: the arena harness on the re-solved environment
+              run: |
+                  pixi run -e lyrical python -m rig_nodes.runtime
+                  pixi run -e lyrical check-typed
+                  pixi run -e lyrical test || { echo "::warning::harness failed once on this runner (timing-sensitive checks); retrying"; pixi run -e lyrical test; }

@@ -52,7 +52,7 @@ log, plus:
                                                         bag on its own (recovered:true, whole bag left)
   host monitor (2026-10-28; rig_nodes.host_monitor)   /rig/host in the bag ≥ 0.8 Hz, fields = the installed
                                                         HostStats (typed) / the read fields (JSON), the graph's
-                                                        nodes pinned; its own CPU ≤ 2 % of a core, ≤ 5 % of the
+                                                        nodes pinned; its own CPU ≤ 3 % of a core (mean), ≤ 5 % of the
                                                         compressed bag — skipped (info) when the installed
                                                         rig_nodes has no host monitor
   the LED backlight (2026-11; rig_nodes.backlight_node) backlight_sim on a free port + the node over socket://;
@@ -118,6 +118,11 @@ class Proc:
 
     def _signal(self, sig: int) -> None:
         signal_group(self.p, sig)
+
+    def text(self) -> str:
+        """What the process has written so far (its log file), for a failed check's detail."""
+        self.log.flush()
+        return Path(self.log.name).read_text(encoding="utf-8", errors="replace")
 
     def kill9(self) -> None:
         if self.alive():
@@ -308,6 +313,7 @@ def host_monitor_values(bag: Path) -> dict:
     return {"samples": len(host), "schema": sorted(s or "std_msgs/msg/String" for s in schemas), "run_s": round(run_s, 1) if run_s else None, "fields_ok": bool(good) and len(good) == len(objs) and not bad,
             "bad_fields": bad, "cores_ok": cores_ok, "ncpu": len(good[0]["core_busy_mean"]) if good else None,
             "groups": sorted({p["group"] for o in good for p in o.get("procs", []) if p.get("group")}),
+            "self_cpu_mean": round(statistics.mean(self_cpu), 4) if self_cpu else None,
             "self_cpu_median": round(statistics.median(self_cpu), 4) if self_cpu else None,
             "self_cpu_max": round(max(self_cpu), 4) if self_cpu else None,
             "bytes_per_sample": round(sum(map(len, host)) / len(host)) if host else None,
@@ -464,8 +470,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # ── bring the graph up ───────────────────────────────────────────────────────
         if not a.no_router:
-            start("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"])
-            check("zenoh router listening on 127.0.0.1:7447", wait_port("127.0.0.1", 7447, 20.0))
+            router = start("router", ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"])
+            # 60 s, not 20: a cold Windows CI runner takes most of a minute for its first `ros2 run`
+            # (ros2cli entry-point discovery + pyc compilation); rig PCs answer in 2–3 s.
+            check("zenoh router listening on 127.0.0.1:7447", wait_port("127.0.0.1", 7447, 60.0), router.text()[-400:])
         fictrac = start("fictrac-adapter", [PY, "-m", "rig_nodes.fictrac_udp_adapter", "--status-every", "0"])
         start("kinefly-adapter", [PY, "-m", "rig_nodes.kinefly_udp_adapter", "--status-every", "0"])
         # The sim on a free port, not BIAS's 5010: a rig PC often has the real BIAS open.
@@ -820,8 +828,11 @@ def main(argv: list[str] | None = None) -> int:
                   hm.get("cores_ok", False), f"{hm.get('ncpu')} CPUs")
             check("host monitor: the graph's processes pinned by script (py:bridge_node, py:fictrac_udp_adapter, py:host_monitor)",
                   {"py:bridge_node", "py:fictrac_udp_adapter", "py:host_monitor"} <= set(hm.get("groups") or []), str(hm.get("groups")))
-            check("host monitor cost: its own CPU ≤ 2 % of one core (median after the first 2 samples)",
-                  hm.get("self_cpu_median") is not None and hm["self_cpu_median"] <= 0.02, f"median {hm.get('self_cpu_median')} max {hm.get('self_cpu_max')} cores")
+            # the MEAN, not the median: on macOS/Linux the full process-table read every 5 s
+            # (rig_nodes 0.3.1 --proc-rescan) is a minority of windows, and a median hides it
+            check("host monitor cost: its own CPU ≤ 3 % of one core (mean after the first 2 samples)",
+                  hm.get("self_cpu_mean") is not None and hm["self_cpu_mean"] <= 0.03,
+                  f"mean {hm.get('self_cpu_mean')} median {hm.get('self_cpu_median')} max {hm.get('self_cpu_max')} cores")
             check("host monitor storage: /rig/host ≤ 5 % of the run's compressed payload (zstd, as the bag)",
                   hm.get("share_compressed") is not None and hm["share_compressed"] <= 0.05, f"{hm.get('share_compressed')} ({hm.get('host_kb_per_h_zstd')} KB/h)")
         check("bridge node still alive at the end of the main run", bridge.alive())
