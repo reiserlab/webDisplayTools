@@ -29,7 +29,8 @@ What is NEW (small, and all of it is visible in the log):
     display + arena health); nothing that writes the log reads it.
   * other device topics are LOGGED, not applied: `/kinefly/raw` (KF/1) → compact tagged
     rows `["kf", ms, seq, src_t_s, left_rad, right_rad, head_rad, abdomen_rad]`;
-    `/bias/reply`, `/bias/status`, `/scanimage/reply`, `/scanimage/status` → `{"type":"connector","src":<id>,…}` events.
+    `/bias/reply`, `/bias/status`, `/scanimage/reply`, `/scanimage/status`, `/backlight/reply`, `/backlight/status`
+    → `{"type":"connector","src":<id>,…}` events.
     Readers already pass unknown string-tagged arrays and unknown event objects through.
   * a source watchdog: when a logged source goes silent for --source-timeout s during a
     log, a `source_lost` event is written (and `source_resumed` when it returns). A device
@@ -46,6 +47,7 @@ PLAN B SPIKE (LAB-303, 2026-10-14) — MCAP as the record of truth:
   * While a run's log is open, EVERYTHING is recorded into `<log-dir>/<run>.bag/` with
     rosbag2_py + the MCAP storage plugin (rig_nodes.recorder, reiserlab/rig-nodes): the device topics as received
     (`/fictrac/raw` or the typed `/fictrac/frame`, `/kinefly/raw`, `/bias/cmd|reply|status`, `/sipm/cmd|reply|status`,
+    `/backlight/cmd|reply|status`,
     the ScanImage frame-stream topics `/scanimage/frame_meta|frame_stats|preview/*` — streams, bag only; their
     nodes are the 2P rig's, private in reiserlab/scanimage-2026-bergamo `2p-rig-nodes/`),
     `/arena/frame` (the closed-loop evaluation with ITS OWN sample time `t`/`ms`), and two
@@ -175,6 +177,12 @@ SCANIMAGE_STATUS_TOPIC = "/scanimage/status"
 SIPM_CMD_TOPIC = "/sipm/cmd"
 SIPM_REPLY_TOPIC = "/sipm/reply"
 SIPM_STATUS_TOPIC = "/sipm/status"
+# The LED backlight controller (rig_nodes.backlight_node, reiserlab/rig-nodes): the protocol's `backlight`
+# plugin (LEDControllerPlugin) through the node. A serial device that never acknowledges, so a reply's
+# `ok` means every line was written (each step `"confirmed": false`, rig-nodes CONTRACT.md §4).
+BACKLIGHT_CMD_TOPIC = "/backlight/cmd"
+BACKLIGHT_REPLY_TOPIC = "/backlight/reply"
+BACKLIGHT_STATUS_TOPIC = "/backlight/status"
 # ScanImage's ZeroMQ frame stream as topics (the 2P rig's frames node, private, 2p-rig-nodes/; LAB-303 Block R). STREAMS:
 # recorded into the bag as received, like /bias/frames, and never derived into a run-log line (the
 # telemetry rule: a string-tagged stream is not a behavior sample). The preview images are bounded at
@@ -195,6 +203,7 @@ CONNECTOR_TOPICS = {
     "bias": {"cmd": BIAS_CMD_TOPIC, "reply": BIAS_REPLY_TOPIC, "status": BIAS_STATUS_TOPIC},
     "scanimage": {"cmd": SCANIMAGE_CMD_TOPIC, "reply": SCANIMAGE_REPLY_TOPIC, "status": SCANIMAGE_STATUS_TOPIC},
     "sipm": {"cmd": SIPM_CMD_TOPIC, "reply": SIPM_REPLY_TOPIC, "status": SIPM_STATUS_TOPIC},
+    "backlight": {"cmd": BACKLIGHT_CMD_TOPIC, "reply": BACKLIGHT_REPLY_TOPIC, "status": BACKLIGHT_STATUS_TOPIC},
 }
 FRAME_TOPIC = "/arena/frame"
 # Host pressure from rig_nodes.host_monitor (reiserlab/rig-nodes): recorded on arrival, no run-log line.
@@ -359,6 +368,7 @@ class RecordingLogWriter(B.LogWriter):
             KINEFLY_TOPIC: STRING_TYPE, BIAS_CMD_TOPIC: STRING_TYPE, BIAS_REPLY_TOPIC: STRING_TYPE, BIAS_STATUS_TOPIC: STRING_TYPE, BIAS_FRAMES_TOPIC: STRING_TYPE,
             SCANIMAGE_CMD_TOPIC: STRING_TYPE, SCANIMAGE_REPLY_TOPIC: STRING_TYPE, SCANIMAGE_STATUS_TOPIC: STRING_TYPE,
             SIPM_CMD_TOPIC: STRING_TYPE, SIPM_REPLY_TOPIC: STRING_TYPE, SIPM_STATUS_TOPIC: STRING_TYPE,
+            BACKLIGHT_CMD_TOPIC: STRING_TYPE, BACKLIGHT_REPLY_TOPIC: STRING_TYPE, BACKLIGHT_STATUS_TOPIC: STRING_TYPE,
             **STREAM_TOPICS,
         }
         t[FRAME_TOPIC] = ARENA_FRAME_TYPE if self._typed else STRING_TYPE
@@ -820,7 +830,7 @@ async def run(args: argparse.Namespace) -> None:
         log.write_rows([kf_row(rel_ms(), pkt, seq)])
 
     # ── connectors: the Studio's connector_command → /<src>/cmd, /<src>/reply → connector_reply ──
-    # CONNECTOR_TOPICS lists them (bias, scanimage); the Studio maps plugin instances onto them. A command
+    # CONNECTOR_TOPICS lists them (bias, scanimage, sipm, backlight); the Studio maps plugin instances onto them. A command
     # is logged on arrival (dir browser→bridge) and its reply is logged when the node answers
     # (via "ws" marks replies the Studio asked for, as opposed to bias_cmd.py's). The reply
     # goes back to the ASKING websocket only (the hub's broadcast coalesces frames).
@@ -960,7 +970,8 @@ async def run(args: argparse.Namespace) -> None:
                 "topics": {"fictrac": FICTRAC_FRAME_TOPIC if typed else FICTRAC_TOPIC, "kinefly": KINEFLY_TOPIC,
                            "bias": [BIAS_CMD_TOPIC, BIAS_REPLY_TOPIC, BIAS_STATUS_TOPIC, BIAS_FRAMES_TOPIC],
                            "scanimage": [SCANIMAGE_CMD_TOPIC, SCANIMAGE_REPLY_TOPIC, SCANIMAGE_STATUS_TOPIC],
-                           "sipm": [SIPM_CMD_TOPIC, SIPM_REPLY_TOPIC, SIPM_STATUS_TOPIC], "frame": FRAME_TOPIC,
+                           "sipm": [SIPM_CMD_TOPIC, SIPM_REPLY_TOPIC, SIPM_STATUS_TOPIC],
+                           "backlight": [BACKLIGHT_CMD_TOPIC, BACKLIGHT_REPLY_TOPIC, BACKLIGHT_STATUS_TOPIC], "frame": FRAME_TOPIC,
                            "browser": BROWSER_TOPIC, "event": EVENT_TOPIC, "session": SESSION_TOPIC},
             }
         )

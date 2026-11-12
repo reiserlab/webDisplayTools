@@ -245,12 +245,15 @@ fictrac-adapter = "rig-fictrac-adapter"
 kinefly-adapter = "rig-kinefly-adapter"
 bias-node = "rig-bias-node"
 bias-cmd = "rig-bias-cmd"
+backlight-node = "rig-backlight-node"
+backlight-cmd = "rig-backlight-cmd"
 # ── the bridge node (this rig's gateway): bridge.py's hub + log writer + dispatcher on ROS input ──
 bridge-node = "python nodes/bridge_node.py"
 # ── simulators (rig_nodes.sims) ────────────────────────────────────────────
 sim = "rig-fictrac-sim"
 kinefly-sim = "rig-kinefly-sim"
 bias-sim = "rig-bias-sim"
+backlight-sim = "rig-backlight-sim"
 # ── the one command a rig runs ──────────────────────────────────────────────
 rig = "python nodes/rig.py"
 # ── acceptance test (LAB-303 PoC criteria): whole graph + Studio emulator + model fly ──

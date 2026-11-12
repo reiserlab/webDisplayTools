@@ -210,6 +210,8 @@ class Emulator:
                     self.check("hello_ack advertises the bias connector", "bias" in (ack.get("connectors") or []), str(ack.get("connectors")))
                 if a.scanimage_cmds:
                     self.check("hello_ack advertises the scanimage connector", "scanimage" in (ack.get("connectors") or []), str(ack.get("connectors")))
+                if a.backlight_cmds:
+                    self.check("hello_ack advertises the backlight connector", "backlight" in (ack.get("connectors") or []), str(ack.get("connectors")))
             await self.send({"type": "log_control", "enabled": True, "level": "behavior_v2"})
             lack = await self.wait_for("log_control_ack")
             self.check("log_control_ack: behavior_v2 in force", bool(lack) and lack.get("enabled") is True and lack.get("level") == "behavior_v2", str(lack))
@@ -274,6 +276,32 @@ class Emulator:
                 self.check("scanimage unknown command → reply error (not a hang)", bool(r) and r.get("ok") is False and r.get("outcome") == "error", str(r)[:200])
                 if self.last_epoch is not None:
                     since = self.last_epoch
+            if a.backlight_cmds:
+                # The runner's path for a `backlight` plugin (LEDControllerPlugin → the backlight node →
+                # the controller's serial port): each command's params as the Studio writes them (a new
+                # color card carries panel_num 0, plugin-registry.js), the lines it becomes in `steps`.
+                async def bl(command: str, params: dict | None = None) -> dict | None:
+                    return await self.connector(command, params, connector="backlight", plugin="backlight")
+
+                def lines(r: dict | None) -> list:
+                    return [s.get("command") for s in (r or {}).get("steps", [])]
+
+                r = await bl("setIRLEDPower", {"power": 50})
+                self.check("backlight setIRLEDPower → ok, one line 'IR 50', written but not confirmed",
+                           bool(r) and r.get("ok") is True and lines(r) == ["IR 50"] and r["steps"][0].get("confirmed") is False, str(r)[:300])
+                r = await bl("setRedLEDPower", {"power": 5, "panel_num": 0})
+                self.check("backlight setRedLEDPower as the Studio writes it (panel_num 0) → ok, 'RED 5 0'", bool(r) and r.get("ok") is True and lines(r) == ["RED 5 0"], str(r)[:300])
+                r = await bl("turnOnLED")
+                self.check("backlight turnOnLED → ok, 'ON 0,0'", bool(r) and r.get("ok") is True and lines(r) == ["ON 0,0"], str(r)[:300])
+                r = await bl("setVisibleBacklightsOff")
+                self.check("backlight setVisibleBacklightsOff → ok, three lines", bool(r) and r.get("ok") is True and lines(r) == ["RED 0", "GRN 0", "BLU 0"], str(r)[:300])
+                r = await bl("setIRLEDPower", {"power": 0, "timeout_s": 2})
+                self.check("backlight timeout_s passes through the bridge (accepted, no warning)",
+                           bool(r) and r.get("ok") is True and lines(r) == ["IR 0"] and not r.get("warning"), str(r)[:300])
+                r = await bl("bogusCommand")
+                self.check("backlight unknown command → reply error (not a hang)", bool(r) and r.get("ok") is False and r.get("outcome") == "error", str(r)[:200])
+                if self.last_epoch is not None:
+                    since = self.last_epoch
             for i in range(a.epochs):
                 since = await self.run_epoch(i, since)
                 if a.iti_s > 0:
@@ -326,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--connector-cmds", action="store_true", help="also drive the bias connector (startRecording/getTimestamp/stopRecording) through connector_command, as the Studio runner does")
     p.add_argument("--connector-video", default="poc_studio.avi", help="startRecording filename for --connector-cmds")
     p.add_argument("--scanimage-cmds", action="store_true", help="also drive the scanimage connector (ping/setFileStem/set/grab/waitIdle/abort/get/bogus) through connector_command")
+    p.add_argument("--backlight-cmds", action="store_true", help="also drive the backlight connector (setIRLEDPower/setRedLEDPower/turnOnLED/setVisibleBacklightsOff/timeout_s/bogus) through connector_command")
     p.add_argument("--out", default="studio-export.jsonl", help="where to write the exported log")
     p.add_argument("--report", default=None, help="JSON report path")
     args = p.parse_args(argv)
