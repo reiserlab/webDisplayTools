@@ -34,9 +34,14 @@
       "path": "./protocols/g6_color_optomotor_smoke.yaml"
     },
     {
-      "key": "g6_optomotor_open_loop_oscillation",
-      "label": "Open-loop optomotor — CW, CCW, 1 Hz sinusoidal oscillation (G6 2×10, no plugins, ~3 min)",
-      "path": "./protocols/g6_optomotor_open_loop_oscillation.yaml"
+      "key": "g6_optomotor_osc_walking",
+      "label": "Optomotor oscillation, walking — open loop yaw + roll (0.2 Hz, 3 depths), closed loop grating + stripe (G6 2×10, FicTrac, ~5 min)",
+      "path": "./protocols/g6_optomotor_osc_walking.yaml"
+    },
+    {
+      "key": "g6_optomotor_osc_flight",
+      "label": "Optomotor oscillation, flight — open loop yaw + roll (0.2 Hz, 3 depths), no plugins (G6 2×10, ~6 min)",
+      "path": "./protocols/g6_optomotor_osc_flight.yaml"
     }
   ]
 }

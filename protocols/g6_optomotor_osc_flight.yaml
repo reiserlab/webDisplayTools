@@ -1,0 +1,145 @@
+version: 3
+
+# ============================================================================
+# Optomotor oscillation, FLYING fly — G6 2×10, open loop only, no plugins, ~6 min.
+# The six open-loop trials of g6_optomotor_osc_walking.yaml, twice. No FicTrac and no
+# closed loop, so it runs on any rig with the arena.
+#
+# OPEN LOOP (mode 2, the controller plays the frames at a constant rate): sine gratings,
+# wavelength 45°, GS16, oscillating at 0.2 Hz (5 s per cycle, a turnaround every 2.5 s).
+# Velocity = peak · sin(2π · 0.2 Hz · t): every 30 s trial is 6 whole cycles, starts and ends
+# at zero speed, so the trials follow each other without a dark gap. Three depths per axis,
+# named by the peak temporal frequency:
+#     2.5 Hz = 112.5°/s peak, 179° of travel between turnarounds
+#     5 Hz   = 225°/s,        358°
+#     10 Hz  = 450°/s,        716°
+#   yaw_osc_*   rotation about the vertical axis (vertical bars, 25 px per wavelength)
+#   roll_osc_*  rotation about the fly's front-back axis (a true roll stimulus: spokes
+#               that meet straight ahead of and behind the fly)
+# The first half of each cycle is clockwise: seen from above for yaw, as the fly sees it
+# looking forward for roll.
+#
+# A constant frame rate cannot make an oscillation from a rotation pattern, so each trial
+# has its own 750-frame pattern whose frame sequence IS one cycle, played at +150 frames/s
+# (GS16 refreshes at 300 Hz; 150 frames/s is two refreshes per frame, so the timing is even).
+# If you change osc_fps, rebuild the patterns with the same --fps.
+#
+# PATTERNS: built by scripts/make-optomotor-osc-patterns.js into
+# protocols/g6_optomotor_osc_patterns/ (about 20 MB, not committed):
+#     pixi run node scripts/make-optomotor-osc-patterns.js
+# then Console → Patterns → Add ▾ → local folder, and check the SD listing shows the names
+# used below. "Straight ahead" is the center of panel column 3 (pixel column 49.5); the
+# script's --front-col changes it.
+#
+# TIMING: 6 trials × 30 s × 2 repetitions = 360 s, then 1 s to blank the arena. For 5 min
+# exactly the second repetition would have to stop after four trials; set `repetitions`
+# or the trial list as needed.
+# ============================================================================
+
+experiment_info:
+  name: "Optomotor oscillation, flight — open loop yaw + roll (~6 min)"
+  author: "Reiser Lab"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+variables:
+  ol_dur: &ol_dur 30              # s — each open-loop trial = 6 cycles at 0.2 Hz
+  osc_fps: &osc_fps 150           # frames/s; each open-loop pattern holds 750 frames = one 5 s cycle
+
+experiment:
+  - name: "open_loop_block"
+    trials: ["yaw_osc_2p5hz", "yaw_osc_5hz", "yaw_osc_10hz", "roll_osc_2p5hz", "roll_osc_5hz", "roll_osc_10hz"]
+    repetitions: 2
+  - "finish"
+
+conditions:
+  - name: "yaw_osc_2p5hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_sine45_yaw_osc_tf2p5"
+        pattern_ID: 1
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "yaw_osc_5hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_sine45_yaw_osc_tf5"
+        pattern_ID: 2
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "yaw_osc_10hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_sine45_yaw_osc_tf10"
+        pattern_ID: 3
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "roll_osc_2p5hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_sine45_roll_osc_tf2p5"
+        pattern_ID: 4
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "roll_osc_5hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_sine45_roll_osc_tf5"
+        pattern_ID: 5
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "roll_osc_10hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_sine45_roll_osc_tf10"
+        pattern_ID: 6
+        duration: *ol_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *ol_dur
+
+  - name: "finish"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: 1
