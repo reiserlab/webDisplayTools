@@ -31,11 +31,23 @@ def check(name, ok, info=""):
     print(f"  {'PASS' if ok else 'FAIL'}  {name}{' — ' + str(info) if info != '' else ''}")
 
 
-def make_log(rot_fps=80.0, osc_fps=200.0, ccw_sign=-1, skip_at=None, with_osc=True, jitter_us=40):
-    """One cw / ccw / osc repetition, 10 s each, 5 s dark between; returns the file path."""
-    t = (1 << 32) - 7_000_000  # 7 s before the u32 micros wrap
+HOST0 = 1_700_000_000_000  # host epoch ms at controller time 0; a row is received 3..40 ms after it is shown
+
+
+def make_log(rot_fps=80.0, osc_fps=200.0, ccw_sign=-1, skip_at=None, with_osc=True, jitter_us=40,
+             steps=False, stale=False, names=("grating_cw", "grating_ccw", "grating_osc_1hz")):
+    """One cw / ccw / osc repetition, 10 s each, 5 s dark between; returns the file path.
+    steps: write the runner's step-start events. stale: frame records of a Console play of
+    the oscillation pattern (42 frames/s, 22 s, ending 30 s before the run), drained at the log's start."""
+    t = (1 << 32) - 60_000_000  # the controller clock wraps inside the run (or inside the stale play)
     seq = 0
     lines = ['{"event":"session","format":"behavior_v2"}', '["a",1,2,3]']
+    stale_rx = None
+
+    def step(cond):
+        if steps:
+            lines.append(json.dumps({"type": "log", "event": "runner", "phase": "step-start",
+                                     "condition": cond, "rx_ms": HOST0 + t / 1e3 - 20}))
 
     def play(pattern, n_frames, fps, seconds, sign=1):
         nonlocal t, seq
@@ -46,16 +58,30 @@ def make_log(rot_fps=80.0, osc_fps=200.0, ccw_sign=-1, skip_at=None, with_osc=Tr
             idx = (sign * k) % n_frames
             # deterministic +/- jitter, as SD load + SPI time would add
             tu = int(t + k * 1e6 / abs(fps) + ((k * 7919) % (2 * jitter_us + 1)) - jitter_us)
-            lines.append(json.dumps(["cf", 1700000000000 + seq, tu % (1 << 32), seq, idx, pattern, 300, 900]))
+            rx = stale_rx if stale_rx is not None else HOST0 + tu / 1e3 + 3 + (k * 13) % 38
+            lines.append(json.dumps(["cf", rx, tu % (1 << 32), seq, idx, pattern, 300, 900]))
             seq += 1
         t += int(seconds * 1e6)
 
-    play(1, 20, rot_fps, 10, +1)
+    if stale:
+        stale_rx = HOST0 + (t + 52_000_000) / 1e3 + 5   # all drained when the log opens, just before the run
+        play(2, 200, 42.46, 22)
+        stale_rx = None
+        t += 30_000_000
+    step("gap")
     t += 5_000_000
+    step(names[0])
+    play(1, 20, rot_fps, 10, +1)
+    step("gap")
+    t += 5_000_000
+    step(names[1])
     play(1, 20, rot_fps, 10, ccw_sign)
+    step("gap")
     t += 5_000_000
     if with_osc:
+        step(names[2])
         play(2, 200, osc_fps, 10, +1)
+    step("gap")
     fd, path = tempfile.mkstemp(suffix=".jsonl")
     with os.fdopen(fd, "w") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -93,6 +119,22 @@ code, rep = run(make_log(skip_at=777))
 check("a skipped oscillation frame fails", code == 1 and rep["stimuli"][2]["not_plus_one_steps"] == 1)
 code, rep = run(make_log(with_osc=False))
 check("a run without the oscillation fails", code == 1)
+
+# ── a real run log: runner step events, and stale frame records from before the run ──
+code, rep = run(make_log(stale=True))
+check("stale records and no step events: the stale play is judged and fails (ww18 run A)",
+      code == 1 and len(rep["stimuli"]) == 4 and not rep["steps_named"], len(rep["stimuli"]))
+code, rep = run(make_log(stale=True, steps=True))
+check("with step events the stale records are ignored and the run passes",
+      code == 0 and rep["records_before_run"] > 900 and len(rep["stimuli"]) == 3, rep["records_before_run"])
+check("stimuli carry their condition names, in order",
+      [s["condition"] for s in rep["stimuli"]] == ["grating_cw", "grating_ccw", "grating_osc_1hz"])
+code, rep = run(make_log(steps=True, ccw_sign=+1))
+check("grating_ccw that steps toward increasing column index fails", code == 1 and not rep["stimuli"][1]["ok"])
+code, rep = run(make_log(steps=True, names=("grating_cw", "grating_osc_1hz", "grating_ccw")))
+check("a stimulus under the wrong condition name fails", code == 1)
+code, rep = run(make_log(steps=True, with_osc=False))
+check("named run without the oscillation fails", code == 1)
 
 fd, empty = tempfile.mkstemp(suffix=".jsonl")
 os.close(fd)
