@@ -1,16 +1,17 @@
 version: 3
 
 # ============================================================================
-# Optomotor oscillation, WALKING fly (fly on the ball, FicTrac) — G6 2×10, ~5 min.
-# 3 min open loop (yaw and roll gratings, three oscillation depths), then 2 min closed
+# Optomotor oscillation, WALKING fly (fly on the ball, FicTrac) — G6 2×10, ~4 min.
+# 2 min open loop (yaw and roll gratings, three oscillation depths), then 2 min closed
 # loop (grating, then stripe). The flight version, open loop only, is
 # g6_optomotor_osc_flight.yaml.
 #
 # OPEN LOOP (mode 2, the controller plays the frames at a constant rate): sine gratings,
 # wavelength 45°, GS16, oscillating at 0.2 Hz (5 s per cycle, a turnaround every 2.5 s).
-# Velocity = peak · sin(2π · 0.2 Hz · t): every 30 s trial is 6 whole cycles, starts and ends
+# Velocity = peak · sin(2π · 0.2 Hz · t): every 20 s trial is 4 whole cycles, starts and ends
 # at zero speed, so the trials follow each other without a dark gap. Three depths per axis,
-# named by the peak temporal frequency:
+# named by the peak temporal frequency, run in ascending order with yaw and roll interleaved
+# (yaw 2.5, roll 2.5, yaw 5, roll 5, yaw 10, roll 10):
 #     2.5 Hz = 112.5°/s peak, 179° of travel between turnarounds
 #     5 Hz   = 225°/s,        358°
 #     10 Hz  = 450°/s,        716°
@@ -40,11 +41,11 @@ version: 3
 # used below. "Straight ahead" is the center of panel column 3 (pixel column 49.5); the
 # script's --front-col changes it.
 #
-# TIMING: 6 × 30 s + 2 × 60 s = 300 s, then 1 s to blank the arena.
+# TIMING: 6 × 20 s + 2 × 60 s = 240 s, then 1 s to blank the arena.
 # ============================================================================
 
 experiment_info:
-  name: "Optomotor oscillation, walking — open loop yaw + roll, closed loop (~5 min)"
+  name: "Optomotor oscillation, walking — open loop yaw + roll, closed loop (~4 min)"
   author: "Reiser Lab"
 
 rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
@@ -61,7 +62,7 @@ plugins:
       offset: 0
 
 variables:
-  ol_dur: &ol_dur 30              # s — each open-loop trial = 6 cycles at 0.2 Hz
+  ol_dur: &ol_dur 20              # s — each open-loop trial = 4 cycles at 0.2 Hz
   osc_fps: &osc_fps 150           # frames/s; each open-loop pattern holds 750 frames = one 5 s cycle
   cl_dur: &cl_dur 60              # s — each closed-loop trial
   bias_amp: &bias_amp 40          # deg/s — peak velocity of the closed-loop bias (±32° at 0.2 Hz)
@@ -70,7 +71,7 @@ variables:
 experiment:
   - "fictrac_setup"
   - name: "open_loop_block"
-    trials: ["yaw_osc_2p5hz", "yaw_osc_5hz", "yaw_osc_10hz", "roll_osc_2p5hz", "roll_osc_5hz", "roll_osc_10hz"]
+    trials: ["yaw_osc_2p5hz", "roll_osc_2p5hz", "yaw_osc_5hz", "roll_osc_5hz", "yaw_osc_10hz", "roll_osc_10hz"]
     repetitions: 1
   - "cl_grating_bias"
   - "cl_stripe_bias"

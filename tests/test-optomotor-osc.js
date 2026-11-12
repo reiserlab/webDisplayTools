@@ -53,14 +53,16 @@ function quiet(fn) {
     }
 }
 
+// Run order: ascending depth, yaw and roll interleaved.
 const OL = [
     ['yaw_osc_2p5hz', 'G6_2x10_sine45_yaw_osc_tf2p5'],
-    ['yaw_osc_5hz', 'G6_2x10_sine45_yaw_osc_tf5'],
-    ['yaw_osc_10hz', 'G6_2x10_sine45_yaw_osc_tf10'],
     ['roll_osc_2p5hz', 'G6_2x10_sine45_roll_osc_tf2p5'],
+    ['yaw_osc_5hz', 'G6_2x10_sine45_yaw_osc_tf5'],
     ['roll_osc_5hz', 'G6_2x10_sine45_roll_osc_tf5'],
+    ['yaw_osc_10hz', 'G6_2x10_sine45_yaw_osc_tf10'],
     ['roll_osc_10hz', 'G6_2x10_sine45_roll_osc_tf10']
 ];
+const patOf = (cond) => OL.find((x) => x[0] === cond)[1];
 const CL = [
     ['cl_grating_bias', 'G6_2x10_sine45_yaw_200f'],
     ['cl_stripe_bias', 'G6_2x10_stripe16_dark_200f']
@@ -97,12 +99,12 @@ function openLoopChecks(p, label, fps) {
         const wire = R.buildTrialParams(k, { patternId: k.pattern_ID });
         const wait = cmds.find((c) => c.type === 'wait');
         check(
-            `${label} ${cond}: ${pat}, mode 2 at +${fps} frames/s, 30 s, plugin-free`,
+            `${label} ${cond}: ${pat}, mode 2 at +${fps} frames/s, 20 s = 4 cycles, plugin-free`,
             k.pattern === pat &&
                 wire.mode === 2 &&
                 wire.frameRate === fps &&
-                k.duration === 30 &&
-                wait.duration === 30 &&
+                k.duration === 20 &&
+                wait.duration === 20 &&
                 cmds.length === 2
         );
     }
@@ -140,8 +142,10 @@ check(
 );
 check(
     'file names are the ones the protocols use',
-    meta.open_loop.join() === OL.map((x) => x[1]).join() &&
-        meta.closed_loop.join() === CL.map((x) => x[1]).join()
+    meta.open_loop.slice().sort().join() ===
+        OL.map((x) => x[1])
+            .sort()
+            .join() && meta.closed_loop.join() === CL.map((x) => x[1]).join()
 );
 const pat = (name) =>
     quiet(() =>
@@ -150,7 +154,7 @@ const pat = (name) =>
         )
     );
 const W = 200;
-const yaw = pat(OL[2][1]);
+const yaw = pat(patOf('yaw_osc_10hz'));
 check(
     'open-loop file: GS16, 200 × 40 px, one cycle of frames',
     yaw.gs_val === 16 &&
@@ -187,7 +191,7 @@ check(
         sameFrame(yaw.frames[k], yaw.frames[meta.frames_per_cycle - k])
     )
 );
-const roll = pat(OL[4][1]);
+const roll = pat(patOf('roll_osc_5hz'));
 check('roll: not a column pattern (bars change with height)', !roll.frames.every(rowsEqual));
 // A rotation about the front-back axis by 180° maps the arena onto itself: the point at
 // (column c, row r) goes to (mirror of c about the front, row 39 − r). With 8 cycles per
@@ -239,7 +243,7 @@ check(
         ['fictrac_setup', ...olNames, 'cl_grating_bias', 'cl_stripe_bias', 'finish'].join()
 );
 const sum = (p) => p.steps.reduce((a, s) => a + s.dur, 0);
-check('walking: 3 min open loop + 2 min closed loop (+1 s to blank)', sum(w) === 301, sum(w));
+check('walking: 2 min open loop + 2 min closed loop (+1 s to blank)', sum(w) === 241, sum(w));
 openLoopChecks(w, 'walking', meta.fps);
 check(
     'walking: fictrac is the only plugin',
@@ -273,8 +277,8 @@ for (const [cond, patName] of CL) {
 console.log('=== flight protocol ===');
 const f = load('g6_optomotor_osc_flight');
 check(
-    'flight order: the 6 open-loop trials twice, finish',
-    f.order.join() === [...olNames, ...olNames, 'finish'].join()
+    'flight order: the 6 open-loop trials three times, finish',
+    f.order.join() === [...olNames, ...olNames, ...olNames, 'finish'].join()
 );
 check('flight: 6 min (+1 s to blank)', sum(f) === 361, sum(f));
 openLoopChecks(f, 'flight', meta.fps);

@@ -2,14 +2,15 @@ version: 3
 
 # ============================================================================
 # Optomotor oscillation, FLYING fly — G6 2×10, open loop only, no plugins, ~6 min.
-# The six open-loop trials of g6_optomotor_osc_walking.yaml, twice. No FicTrac and no
+# The six open-loop trials of g6_optomotor_osc_walking.yaml, three times. No FicTrac and no
 # closed loop, so it runs on any rig with the arena.
 #
 # OPEN LOOP (mode 2, the controller plays the frames at a constant rate): sine gratings,
 # wavelength 45°, GS16, oscillating at 0.2 Hz (5 s per cycle, a turnaround every 2.5 s).
-# Velocity = peak · sin(2π · 0.2 Hz · t): every 30 s trial is 6 whole cycles, starts and ends
+# Velocity = peak · sin(2π · 0.2 Hz · t): every 20 s trial is 4 whole cycles, starts and ends
 # at zero speed, so the trials follow each other without a dark gap. Three depths per axis,
-# named by the peak temporal frequency:
+# named by the peak temporal frequency, run in ascending order with yaw and roll interleaved
+# (yaw 2.5, roll 2.5, yaw 5, roll 5, yaw 10, roll 10):
 #     2.5 Hz = 112.5°/s peak, 179° of travel between turnarounds
 #     5 Hz   = 225°/s,        358°
 #     10 Hz  = 450°/s,        716°
@@ -31,9 +32,8 @@ version: 3
 # used below. "Straight ahead" is the center of panel column 3 (pixel column 49.5); the
 # script's --front-col changes it.
 #
-# TIMING: 6 trials × 30 s × 2 repetitions = 360 s, then 1 s to blank the arena. For 5 min
-# exactly the second repetition would have to stop after four trials; set `repetitions`
-# or the trial list as needed.
+# TIMING: 6 trials × 20 s × 3 repetitions = 360 s, then 1 s to blank the arena. One
+# repetition is 2 min, so whole repetitions give 4 or 6 min; set `repetitions` as needed.
 # ============================================================================
 
 experiment_info:
@@ -43,13 +43,13 @@ experiment_info:
 rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
 
 variables:
-  ol_dur: &ol_dur 30              # s — each open-loop trial = 6 cycles at 0.2 Hz
+  ol_dur: &ol_dur 20              # s — each open-loop trial = 4 cycles at 0.2 Hz
   osc_fps: &osc_fps 150           # frames/s; each open-loop pattern holds 750 frames = one 5 s cycle
 
 experiment:
   - name: "open_loop_block"
-    trials: ["yaw_osc_2p5hz", "yaw_osc_5hz", "yaw_osc_10hz", "roll_osc_2p5hz", "roll_osc_5hz", "roll_osc_10hz"]
-    repetitions: 2
+    trials: ["yaw_osc_2p5hz", "roll_osc_2p5hz", "yaw_osc_5hz", "roll_osc_5hz", "yaw_osc_10hz", "roll_osc_10hz"]
+    repetitions: 3
   - "finish"
 
 conditions:
