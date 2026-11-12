@@ -40,7 +40,7 @@
     },
     {
       "key": "g6_optomotor_osc_flight",
-      "label": "Optomotor oscillation, flight — open loop yaw + roll (0.2 Hz, 3 depths), no plugins (G6 2×10, ~6 min)",
+      "label": "Optomotor oscillation, flight — open loop yaw + roll (0.2 Hz, 3 depths), no plugins (G6 2×10, ~4 min)",
       "path": "./protocols/g6_optomotor_osc_flight.yaml"
     }
   ]

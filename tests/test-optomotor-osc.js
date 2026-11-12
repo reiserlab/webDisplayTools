@@ -277,10 +277,10 @@ for (const [cond, patName] of CL) {
 console.log('=== flight protocol ===');
 const f = load('g6_optomotor_osc_flight');
 check(
-    'flight order: the 6 open-loop trials three times, finish',
-    f.order.join() === [...olNames, ...olNames, ...olNames, 'finish'].join()
+    'flight order: the 6 open-loop trials twice, finish',
+    f.order.join() === [...olNames, ...olNames, 'finish'].join()
 );
-check('flight: 6 min (+1 s to blank)', sum(f) === 361, sum(f));
+check('flight: 4 min (+1 s to blank)', sum(f) === 241, sum(f));
 openLoopChecks(f, 'flight', meta.fps);
 const fc = f.exp.conditions.flatMap((c) => c.commands);
 check(

@@ -1,8 +1,8 @@
 version: 3
 
 # ============================================================================
-# Optomotor oscillation, FLYING fly — G6 2×10, open loop only, no plugins, ~6 min.
-# The six open-loop trials of g6_optomotor_osc_walking.yaml, three times. No FicTrac and no
+# Optomotor oscillation, FLYING fly — G6 2×10, open loop only, no plugins, ~4 min.
+# The six open-loop trials of g6_optomotor_osc_walking.yaml, twice. No FicTrac and no
 # closed loop, so it runs on any rig with the arena.
 #
 # OPEN LOOP (mode 2, the controller plays the frames at a constant rate): sine gratings,
@@ -32,12 +32,11 @@ version: 3
 # used below. "Straight ahead" is the center of panel column 3 (pixel column 49.5); the
 # script's --front-col changes it.
 #
-# TIMING: 6 trials × 20 s × 3 repetitions = 360 s, then 1 s to blank the arena. One
-# repetition is 2 min, so whole repetitions give 4 or 6 min; set `repetitions` as needed.
+# TIMING: 6 trials × 20 s × 2 repetitions = 240 s, then 1 s to blank the arena.
 # ============================================================================
 
 experiment_info:
-  name: "Optomotor oscillation, flight — open loop yaw + roll (~6 min)"
+  name: "Optomotor oscillation, flight — open loop yaw + roll (~4 min)"
   author: "Reiser Lab"
 
 rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
@@ -49,7 +48,7 @@ variables:
 experiment:
   - name: "open_loop_block"
     trials: ["yaw_osc_2p5hz", "roll_osc_2p5hz", "yaw_osc_5hz", "roll_osc_5hz", "yaw_osc_10hz", "roll_osc_10hz"]
-    repetitions: 3
+    repetitions: 2
   - "finish"
 
 conditions:
