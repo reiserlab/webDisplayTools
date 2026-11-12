@@ -2390,7 +2390,7 @@
        drives stays visible here (clicking opens ⚙ Settings). Text/title set by syncRigContext(). -->
   <span class="rig-tag" id="rigTag" role="button" tabindex="0" title="Bench rig — click to see or change it in ⚙ Settings">rig —</span>
   <span class="chip rig-mismatch" id="rigMismatch" style="display:none" title="Session (bench) rig differs from the loaded protocol's rig: field — the bench geometry wins for Console/stream operations; the protocol still runs with its own rig. Unlock the rig selector in ⚙ Settings to reconcile, or load a matching protocol.">⚠ bench ≠ protocol</span>
-  <span class="chip rig-mismatch" id="benchMacChip" style="display:none" title="The connected controller's MAC (0xC2) does not match the course roster's entry for this bench id — the wrong bench id would namespace saves/run-logs under another bench. See instructor.">⚠ bench ≠ roster</span>
+  <span class="chip rig-mismatch" id="benchMacChip" style="display:none" title="The connected controller's MAC (0xC2) does not match the roster's entry for this rig id — the wrong rig id would namespace saves/run-logs under another rig.">⚠ bench ≠ roster</span>
   <span class="chip qwiic-chip qw-off" id="qwiicChip" style="display:none" role="button" tabindex="0" title="Qwiic peripherals: the connect-time scan compared with the rig YAML. Click: open Console → Qwiic">Qwiic</span>
   <!-- v6 top-bar diet: device line hidden (arena+fw now on the status-dot
        hover); still written by updateDeviceLine so nothing depends on absence. -->
@@ -2420,7 +2420,7 @@
       <div class="menu-head">Open protocol</div>
       <button id="fmOpen" title="Open a protocol .yaml from this computer">Open local file…</button>
       <button id="fmOpenLibrary" title="Pick a committed protocol from this site's own registry (protocols/index.json)">Open from Library…</button>
-      <button id="fmOpenCourse" title="List this bench's saves (protocols/&lt;bench-id&gt;/) and promoted shared protocols (protocols/shared/) in the course-data repo">Open from Repo…</button>
+      <button id="fmOpenCourse" title="List this rig's saves (protocols/&lt;rig-id&gt;/) and promoted shared protocols (protocols/shared/) in the data repo">Open from Repo…</button>
       <button id="fmOpenDemo" class="edit-only" title="Load a bundled demo protocol to explore — same list the designer's Load demo ▾ used to hold">Open demo…</button>
       <button id="fmReplay" title="Play back a recorded run from its run log (course repo or this computer) — the matching protocol is found automatically; the arena is not driven">↺ Replay a recorded run…</button>
       <div class="menu-head edit-only" data-alt-head="fmSave">Save &amp; share</div>
@@ -2472,12 +2472,12 @@
           <span class="gh-who" id="ghWho"></span>
           <button class="gh-signout" id="ghSignOutBtn" title="Sign out — clear the stored token so a different account/token can be used">Sign out</button>
           <span class="gh-spacer"></span>
-          <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id">🔒</button>
+          <button class="gh-lock" id="ghLock" title="Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / rig id">🔒</button>
         </div>
-        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/cshl-2026-course" title="Target GitHub repo (owner/name) for saves — defaults to the course-data repo (reiserlab/cshl-2026-course); type another owner/name to override. Stored in this browser's localStorage"></div>
-        <div class="gh-row"><label for="ghBenchId">Bench id</label><input type="text" id="ghBenchId" placeholder="e.g. bench03" title="Instructor-set bench identity — namespaces course-repo protocol saves (protocols/&lt;bench-id&gt;/) and run-log commits (runlogs/&lt;bench-id&gt;/); stored in this browser's localStorage"></div>
+        <div class="gh-row"><label for="ghRepoInput">Repo</label><input type="text" id="ghRepoInput" placeholder="reiserlab/arena-experiments" title="Target GitHub data repo (owner/name) for saves and run logs — defaults to the lab data repo (reiserlab/arena-experiments); type another owner/name to override (course benches: reiserlab/cshl-2026-course). Stored in this browser's localStorage; a ?repo= link overrides it for that tab only"></div>
+        <div class="gh-row"><label for="ghBenchId">Rig id</label><input type="text" id="ghBenchId" placeholder="e.g. rig03-sr" title="Rig identity — namespaces protocol saves (protocols/&lt;rig-id&gt;/) and run-log commits (runlogs/&lt;rig-id&gt;/) in the data repo; course benches use bench01…bench07 (must match roster.yaml). Stored in this browser's localStorage"></div>
         <label class="gh-check"><input type="checkbox" id="ghPR" title="Save opens a branch + Pull Request on the target repo (review-gated — the default for reiserlab/webDisplayTools)"> Save as Pull Request</label>
-        <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Course-repo mode: safe there because bench-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
+        <label class="gh-check"><input type="checkbox" id="ghDirect" title="Save commits straight to the target repo's default branch — no branch, no PR. Safe because rig-id namespacing means no two rigs write the same file"> Commit directly to default branch</label>
         <label class="gh-check"><input type="checkbox" id="ghArchivePatterns" title="Advanced: after each completed run, snapshot the SD card's patterns to pattern-sets/&lt;hash&gt;/patterns.zip in the repo (content-hash deduped) — redundancy for on-card edits. OFF by default: the SD bulk-download is still under investigation (it can disconnect the arena on large cards)."> Archive SD patterns to repo after each run <span class="dim">(advanced)</span></label>
         <div class="gh-dest" id="ghDest">→ writes a local .yaml file (sign in to GitHub to open a PR instead)</div>
       </div>
@@ -2681,7 +2681,7 @@
             <button class="pill log-only" id="btnLogClear">Clear</button>
             <button class="pill log-only" id="btnLogCopy" title="Copy log to clipboard">Copy</button>
             <button class="pill log-only" id="btnLogSave" title="Download the recorded run log (.json + .txt)" disabled>⬇ Save</button>
-            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the course repo (runlogs/&lt;bench-id&gt;/, gzipped .jsonl.gz) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one. A restarted bridge serves a different file, so the push refuses it." disabled>⇪ Push log</button>
+            <button class="pill log-only" id="btnLogPush" title="Push this run's log to the data repo (runlogs/&lt;rig-id&gt;/, gzipped .jsonl.gz) — use after an auto-commit was skipped (aborted/disconnected) or failed. Needs the bridge still connected; it re-serves the last run until the next one. A restarted bridge serves a different file, so the push refuses it." disabled>⇪ Push log</button>
           </span>
           <!-- Scope controls live ON the header row in scope mode (maximizes the
                canvas); hidden in log mode. The .acts group is hidden in scope mode. -->
@@ -3551,22 +3551,47 @@ function studioMarkerCurrent(stored, current) {
     Studio.ghToken = function () {
         return sessionStorage.getItem('studio_gh_pat') || localStorage.getItem('studio_gh_pat') || null;
     };
-    // Default course-data repo — pre-filled in the sign-in Repo field and used
-    // by courseSettings when the bench hasn't set its own, so the course flow
-    // (save/open-course/runlogs/roster/genotypes) targets it out of the box.
-    // Overridable: type another owner/name and it's stored in localStorage.
-    Studio.DEFAULT_COURSE_REPO = 'reiserlab/cshl-2026-course';
+    // Default data repo (LAB-227, 2026-11): the lab's PRIVATE reiserlab/arena-experiments —
+    // pre-filled in the Repo field and used by courseSettings when this browser has not
+    // stored its own, so saves / Open from Repo / run logs / roster / vocab target it out
+    // of the box. Overridable: type another owner/name (the course benches and rig03-sr
+    // still write to reiserlab/cshl-2026-course) and it is stored in localStorage. The
+    // Pattern Designer (DEFAULT_DATA_REPO) and the dashboard (DEFAULT_REPO) carry the
+    // same string; tests/test-studio-shell.js pins the three equal.
+    Studio.DEFAULT_COURSE_REPO = 'reiserlab/arena-experiments';
+    // ?repo=owner/name is a SESSION override of the stored repo for THIS TAB only (never
+    // written to localStorage — the Pattern Designer has the same rule). Parsed here, in
+    // the classic shell, so it is in force before the page-start listings run (ww18
+    // 2026-10-29: signed out, `?repo=` wired the DEFAULT repo's shared pattern previews
+    // because the override existed only for `?repo=&p=` loads). Every consumer of the
+    // "course repo" goes through courseSettings(), so the override wins everywhere —
+    // reads AND writes, signed in or out. Typing a repo in ⚙ Settings ends it.
+    Studio.sessionRepo = (function () {
+        try {
+            const r = new URLSearchParams(location.search).get('repo');
+            return r && /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.test(r) && !r.includes('..')
+                ? r
+                : null;
+        } catch (_) {
+            return null;
+        }
+    })();
     Studio.courseSettings = function () {
-        const raw = (localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO).trim();
+        const raw = (
+            Studio.sessionRepo ||
+            localStorage.getItem('studio_gh_repo') ||
+            Studio.DEFAULT_COURSE_REPO
+        ).trim();
         const m = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/.exec(raw);
         return {
             repo: m && !raw.includes('..') ? { owner: m[1], name: m[2], full: raw } : null,
             direct: localStorage.getItem('studio_gh_direct') === '1',
             archivePatterns: localStorage.getItem('studio_archive_patterns') === '1',
-            benchId: (localStorage.getItem('studio_bench_id') || '').trim()
+            benchId: (localStorage.getItem('studio_bench_id') || '').trim(),
+            repoFromUrl: !!Studio.sessionRepo // this tab follows its ?repo= link
         };
     };
-    // RIG-ID: the instructor-set bench id — namespaces course-repo protocol
+    // RIG-ID: the rig id (localStorage key `studio_bench_id` keeps its historical name) — namespaces course-repo protocol
     // saves and run-log commits. Identity comes from THIS (not the controller
     // MAC, which only cross-checks it against roster.yaml at connect).
     Object.defineProperty(Studio, 'rigId', {
@@ -4035,7 +4060,7 @@ function studioMarkerCurrent(stored, current) {
         // outcome is shown in the modal so a push is never silent/mysterious.
         showUploadModal('Uploading run log…', { busy: true, msg: 'preparing…' });
         if (!cs.benchId) {
-            showUploadModal('Run log not committed', { error: true, msg: 'Bench id not set — see instructor (⚙ Settings → Bench id).' });
+            showUploadModal('Run log not committed', { error: true, msg: 'Rig id not set — set it in ⚙ Settings → Rig id (🔓 to unlock).' });
             return;
         }
         const bridge = Studio.session && Studio.session.bridge;
@@ -4683,6 +4708,9 @@ function studioMarkerCurrent(stored, current) {
             // validated ?repo= load or an in-app course-repo open/save.
             repo: repoRef ? repoRef.repo : null,
             repoPath: repoRef ? repoRef.path : null,
+            // A bare ?repo= (tab-scoped repo override, see courseSettings) survives the
+            // canonical rewrite so a refresh keeps the tab on the requested repo.
+            sessionRepo: Studio.sessionRepo || null,
             // #135: only an EXPLICIT session-rig selection is shareable; a rig
             // derived from the loaded protocol is redundant with `p` (clean URL).
             rigKey: Studio.currentRig && Studio.currentRig.explicit ? Studio.currentRig.name : null,
@@ -8872,14 +8900,14 @@ async function fetchCourseRoster() {
     if (!cs.benchId) return;
     const mine = entries.find((p) => p && p.rig_id === cs.benchId);
     if (!mine) {
-        Studio.rawLog('course roster: no entry for bench id "' + cs.benchId + '" — experimenter not pre-filled', 'warn');
+        Studio.rawLog('course roster: no entry for rig id "' + cs.benchId + '" — experimenter not pre-filled', 'warn');
         return;
     }
     // Pre-fill (typo-proofing) — never clobber something already typed.
     const exp = $('mExp');
     if (exp && !exp.value.trim() && (mine.id || mine.name)) {
         exp.value = mine.id || mine.name;
-        Studio.rawLog('experimenter pre-filled from roster: ' + exp.value + ' (bench ' + cs.benchId + ')', 'info');
+        Studio.rawLog('experimenter pre-filled from roster: ' + exp.value + ' (rig ' + cs.benchId + ')', 'info');
         Studio.updateRunGate();
     }
     // MAC cross-check — bench id claims bench03 but the controller matches
@@ -8890,8 +8918,8 @@ async function fetchCourseRoster() {
         if (norm(mac) !== norm(mine.mac)) {
             chip.style.display = 'inline-block';
             chip.title = 'Controller MAC ' + mac + ' ≠ roster entry for ' + cs.benchId + ' (' + mine.mac +
-                ') — a wrong bench id would namespace saves/run-logs under another bench. See instructor.';
-            Studio.rawLog('⚠ roster: bench id ' + cs.benchId + ' lists MAC ' + mine.mac + ' but the controller reports ' + mac, 'warn');
+                ') — a wrong rig id would namespace saves/run-logs under another rig.';
+            Studio.rawLog('⚠ roster: rig id ' + cs.benchId + ' lists MAC ' + mine.mac + ' but the controller reports ' + mac, 'warn');
         }
     }
 }
@@ -8901,17 +8929,36 @@ async function fetchCourseRoster() {
 // `genotypes:` list, same shape as configs/metadata/genotypes.yaml) becomes
 // the fly-genotype vocabulary for the session — replacing the lab-wide list
 // and repointing the "↗ source" link. Independent of bench id / roster.
+// Per-rig vocabularies (LAB-227 Phase 4): a rig may keep its own list at
+// protocols/<rig-id>/<file> (its protocol folder, already a readable prefix in
+// js/studio-github.js); the repo ROOT file is the lab-wide fallback. A missing
+// rig-level file is the normal case and stays silent — only a root miss is
+// reported by the caller. Returns {ok, path, bytes} or {ok:false, status}.
+async function readCourseVocabFile(cs, token, file) {
+    const paths = [];
+    if (cs.benchId && /^[A-Za-z0-9._-]+$/.test(cs.benchId)) paths.push('protocols/' + cs.benchId + '/' + file);
+    paths.push(file);
+    let last = null;
+    for (const path of paths) {
+        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, path, null, token));
+        if (res.ok) return { ok: true, path: path, bytes: res.bytes };
+        last = res;
+    }
+    return { ok: false, status: last ? last.status : 0 };
+}
 async function fetchCourseGenotypes() {
     const cs = Studio.courseSettings();
     const token = ghToken();
-    if (!cs.repo || !token) return; // no course repo — keep the lab-wide list
+    if (!cs.repo || !token) return; // no data repo — keep the lab-wide list
     let list;
+    let src;
     try {
-        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, 'genotypes.yaml', null, token));
+        const res = await readCourseVocabFile(cs, token, 'genotypes.yaml');
         if (!res.ok) {
             Studio.rawLog('course genotypes: no genotypes.yaml in ' + cs.repo.full + ' (HTTP ' + res.status + ') — using the lab list', 'warn');
             return;
         }
+        src = res.path;
         const data = YAML.parse(new TextDecoder().decode(res.bytes));
         list = (data && data.genotypes) || [];
     } catch (e) {
@@ -8922,10 +8969,10 @@ async function fetchCourseGenotypes() {
     renderGenoVocab(list);
     const link = $('mGenoSrc');
     if (link) {
-        link.href = courseFileUrl(cs, 'genotypes.yaml');
-        link.title = 'Course genotype list (' + cs.repo.full + '/genotypes.yaml)';
+        link.href = courseFileUrl(cs, src);
+        link.title = 'Genotype list (' + cs.repo.full + '/' + src + ')';
     }
-    Studio.rawLog('genotype list from the course repo (' + cs.repo.full + '/genotypes.yaml, ' + list.length + ' entries)', 'info');
+    Studio.rawLog('genotype list from the data repo (' + cs.repo.full + '/' + src + ', ' + list.length + ' entries)', 'info');
 }
 
 // ---- generic course-repo vocab (CLAUDE.md rule: connected repo is the source of
@@ -8940,12 +8987,14 @@ async function fetchCourseVocab(file, key, srcId, apply) {
     const token = ghToken();
     if (!cs.repo || !token) return; // not connected to a repo — keep the lab list
     let list;
+    let src;
     try {
-        const res = await GH.runBytes(fetch, GH.reqGetContentsRaw(cs.repo.owner, cs.repo.name, file, null, token));
+        const res = await readCourseVocabFile(cs, token, file); // protocols/<rig-id>/ first, then root
         if (!res.ok) {
             Studio.rawLog('course ' + key + ': no ' + file + ' in ' + cs.repo.full + ' (HTTP ' + res.status + ') — using the lab list', 'warn');
             return;
         }
+        src = res.path;
         const data = YAML.parse(new TextDecoder().decode(res.bytes));
         list = (data && data[key]) || [];
     } catch (e) {
@@ -8956,10 +9005,10 @@ async function fetchCourseVocab(file, key, srcId, apply) {
     apply(list);
     const link = $(srcId);
     if (link) {
-        link.href = courseFileUrl(cs, file);
-        link.title = 'Course ' + key + ' list (' + cs.repo.full + '/' + file + ')';
+        link.href = courseFileUrl(cs, src);
+        link.title = key + ' list (' + cs.repo.full + '/' + src + ')';
     }
-    Studio.rawLog(key + ' list from the course repo (' + cs.repo.full + '/' + file + ', ' + list.length + ' entries)', 'info');
+    Studio.rawLog(key + ' list from the data repo (' + cs.repo.full + '/' + src + ', ' + list.length + ' entries)', 'info');
 }
 
 // ---- pattern set / name picker (Console) + Run pattern resolution ----
@@ -11471,7 +11520,7 @@ async function saveViaDirectCommit() {
     if (!token) { Studio.showBanner('Sign in to GitHub first.'); return; }
     if (!cs.repo) { Studio.showBanner('Set the target repo (owner/name) in ⚙ Settings first.'); return; }
     if (!cs.benchId) {
-        Studio.showBanner('Course-repo save blocked: bench id not set — see instructor (⚙ Settings → Bench id).');
+        Studio.showBanner('Repo save blocked: rig id not set — set it in ⚙ Settings → Rig id (🔓 to unlock).');
         return;
     }
     if (!ensureSaveFilename(doc)) return;
@@ -11685,7 +11734,7 @@ function updateSaveLabel() {
     const saveAs = $('fmSaveAs');
     if (direct) {
         $('ghDest').textContent = '→ commits straight to ' + cs.repo.full + ' /protocols/' +
-            (cs.benchId || '⚠ set bench id') + '/ (default branch, no PR)';
+            (cs.benchId || '⚠ set rig id') + '/ (default branch, no PR)';
         $('fmSave').textContent = 'Save → course repo';
         if (saveAs) saveAs.textContent = 'Save as → course repo…';
     } else if (pr) {
@@ -11737,19 +11786,27 @@ function wireCourseSettings() {
     const direct = $('ghDirect');
     const bench = $('ghBenchId');
     if (!repoIn || !direct || !bench) return;
-    repoIn.value = localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO;
+    repoIn.value = Studio.sessionRepo || localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO;
+    if (Studio.sessionRepo) {
+        repoIn.title += ' — this tab follows its ?repo= link (' + Studio.sessionRepo + '); typing another repo ends that';
+    }
     direct.checked = localStorage.getItem('studio_gh_direct') === '1';
     bench.value = localStorage.getItem('studio_bench_id') || '';
     repoIn.addEventListener('change', () => {
         const v = repoIn.value.trim();
         if (v && !(window.StudioUrlState && window.StudioUrlState.isSafeRepo(v))) {
-            Studio.showBanner('Repo must be owner/name — e.g. reiserlab/cshl-2026-course.');
-            repoIn.value = localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO;
+            Studio.showBanner('Repo must be owner/name — e.g. reiserlab/arena-experiments.');
+            repoIn.value = Studio.sessionRepo || localStorage.getItem('studio_gh_repo') || Studio.DEFAULT_COURSE_REPO;
             return;
         }
         // '' (not removeItem): an explicit clear must survive reloads — only a
-        // never-set key gets the course-repo default seed above.
+        // never-set key gets the data-repo default seed above.
         localStorage.setItem('studio_gh_repo', v);
+        // Typing a repo ends this tab's ?repo= override (and drops it from the URL).
+        if (Studio.sessionRepo) {
+            Studio.sessionRepo = null;
+            if (Studio.updateUrl) Studio.updateUrl({ push: false });
+        }
         updateSaveLabel();
         // Repo changed → re-pull that repo's metadata (roster/genotypes/links).
         if (Studio.refreshCourseMeta) Studio.refreshCourseMeta();
@@ -11794,13 +11851,13 @@ function wireCourseSettings() {
         if (signIn) {
             signIn.classList.toggle('gh-signin-while-locked', locked);
             signIn.title = locked
-                ? 'Sign in for course-repo read access; repo, bench, and write settings remain instructor-locked'
+                ? 'Sign in for data-repo read access; repo, rig id, and write settings remain locked (🔓 to edit)'
                 : 'Sign in to GitHub with a personal access token (fine-grained for org members; classic for the shared course account) — see docs/development/data-repo-token-runbook.md';
         }
         if (ghLock) {
             ghLock.textContent = locked ? '🔒' : '🔓';
             ghLock.title = locked
-                ? 'Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / bench id'
+                ? 'Bench GitHub settings are LOCKED (kiosk-safe) — click to unlock and edit the token / repo / rig id'
                 : 'Bench GitHub settings UNLOCKED — set them, then click to re-lock (locks again on reload)';
         }
     }
@@ -12235,7 +12292,15 @@ async function registerRepoSharedPatternPreviews(repo, token) {
     try {
         const res = await GH.run(fetch, GH.reqGetContents(repo.owner, repo.name, 'patterns', null, token));
         if (gen !== sharedPreviewGen) return; // a newer listing (repo change / sign-in) was requested
-        if (!res.ok || !Array.isArray(res.data)) return;
+        if (!res.ok || !Array.isArray(res.data)) {
+            // Signed out, a private repo (the lab default) answers 404 — say so once, so a
+            // missing thumbnail is traceable to the sign-in state, not to the pattern.
+            if (!token && res && [401, 403, 404].includes(res.status)) {
+                Studio.rawLog('shared pattern library: ' + repo.full + '/patterns/ is not readable signed out (HTTP ' +
+                    res.status + ') — sign in if this repository is private', 'info');
+            }
+            return;
+        }
         const entries = res.data
             .filter((f) => f && f.type === 'file' && /\.pat$/i.test(f.name))
             .map((f) => [f.name, () => repoFileBytes(repo, f.path)]);
@@ -12246,7 +12311,7 @@ async function registerRepoSharedPatternPreviews(repo, token) {
             const sel = $('cPatName');
             if (sel && sel.value) renderPatThumb(sel.value);
             if (Studio.editor && Studio.editor.repaintLibrary) Studio.editor.repaintLibrary();
-            Studio.rawLog('course repo: ' + n + ' shared pattern preview(s) wired from patterns/', 'info');
+            Studio.rawLog('shared pattern library: ' + n + ' preview(s) wired from ' + repo.full + '/patterns/', 'info');
         }
     } catch (_) { /* missing/private/unavailable shared library — previews stay best-effort */ }
 }
@@ -12489,7 +12554,7 @@ $('fmPromote').addEventListener('click', async () => {
     const token = ghToken();
     const doc = Studio.currentDoc;
     if (!cs.repo || !token) { Studio.showBanner('Course repo + GitHub sign-in required to promote.'); return; }
-    if (!cs.benchId) { Studio.showBanner('Promote blocked: bench id not set — see instructor.'); return; }
+    if (!cs.benchId) { Studio.showBanner('Promote blocked: rig id not set (⚙ Settings → Rig id).'); return; }
     if (!doc || Studio.isUntitledDoc(doc)) { Studio.showBanner('Open (and save) a protocol first.'); return; }
     const base = GH.slug((doc.filename || 'protocol.yaml').replace(/\.ya?ml$/i, ''));
     const srcYaml = 'protocols/' + cs.benchId + '/' + base + '.yaml';
@@ -18085,7 +18150,7 @@ async function initFromUrl() {
                 psEl.commitBtn.disabled = n === 0 || invalid > 0 || !dir;
                 psEl.commitBtn.title = dir
                     ? 'Direct-commit the set to ' + dir + '/ in the course repo (identical files skipped; a different file under an existing name refuses)'
-                    : 'Save the protocol to the course repo first — the set commits into its _patterns/ folder (needs sign-in + bench id)';
+                    : 'Save the protocol to the course repo first — the set commits into its _patterns/ folder (needs sign-in + rig id)';
             }
         }
 
@@ -18131,7 +18196,7 @@ async function initFromUrl() {
             const token = ghToken();
             if (!token || !cs.repo) { showError('Not signed in', 'Sign in to GitHub and set the course repo (⚙ Settings) first.'); return; }
             const dir = psProtoDir();
-            if (!dir) { showError('No destination', 'Save the protocol to the course repo first — the set commits next to its YAML (needs a bench id).'); return; }
+            if (!dir) { showError('No destination', 'Save the protocol to the course repo first — the set commits next to its YAML (needs a rig id).'); return; }
             let bundle;
             try { bundle = window.PatternSet.buildBundle(psState.set); }
             catch (e) { showError('Set not exportable', e.message || String(e)); return; }
@@ -18640,7 +18705,7 @@ initFromUrl();
   // The two save-mode checkboxes: put the help on the whole label row.
   (function(){ var pr=document.getElementById('ghPR'), di=document.getElementById('ghDirect');
     if(pr&&pr.closest('label')) pr.closest('label').setAttribute('data-help','Saving opens a Pull Request for review instead of writing directly.');
-    if(di&&di.closest('label')) di.closest('label').setAttribute('data-help','Saving commits straight to the repo’s main branch — the usual course setup (each bench writes only its own files).');
+    if(di&&di.closest('label')) di.closest('label').setAttribute('data-help','Saving commits straight to the repo’s main branch — the usual rig setup (each rig writes only its own files).');
   })();
   // Panel titles: student text beside the always-on engineer hover.
   var PANEL_HELP = {
@@ -18731,7 +18796,10 @@ initFromUrl();
     var q=[];
     var arena=window.Studio && Studio.currentRig && Studio.currentRig.arenaConfig;
     if(arena) q.push('arena='+encodeURIComponent(arena));
-    var repo=(localStorage.getItem('studio_gh_repo')||'').trim();
+    // The effective data repo — default, stored, or this tab's ?repo= override — so the
+    // Designer's "Open from Repo" lists the same repo the Studio is on.
+    var cs=window.Studio && Studio.courseSettings ? Studio.courseSettings() : null;
+    var repo=cs && cs.repo ? cs.repo.full : '';
     if(repo) q.push('repo='+encodeURIComponent(repo));
     return 'pattern_editor.html'+(q.length?'?'+q.join('&'):'');
   }

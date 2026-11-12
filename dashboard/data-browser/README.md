@@ -162,9 +162,11 @@ relative-heading pages instead of failing import.
 
 ## Public page, private data
 
-The dashboard itself is public. Runlogs live in `reiserlab/cshl-2026-course`,
-which was private during the course and has been public since 2026-08 (reads work
-signed-out; writes still need a token).
+The dashboard itself is public. Runlogs live in the lab's private data repo
+`reiserlab/arena-experiments` (the default in the repo field since LAB-227 Phase 4;
+every read needs a token). The 2026 course's logs stay in `reiserlab/cshl-2026-course`,
+public since 2026-08 (reads work signed-out) — type that repo into the field to browse
+them.
 
 The sign-in flow uses:
 
