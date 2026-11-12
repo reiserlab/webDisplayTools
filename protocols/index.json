@@ -32,6 +32,16 @@
       "key": "g6_color_optomotor_smoke",
       "label": "Color optomotor SMOKE — 10 s per pattern, duty 100 %, BIAS check (~2 min)",
       "path": "./protocols/g6_color_optomotor_smoke.yaml"
+    },
+    {
+      "key": "g6_optomotor_osc_walking",
+      "label": "Optomotor oscillation, walking — open loop yaw + roll (0.2 Hz, 3 depths), closed loop grating + stripe (G6 2×10, FicTrac, ~4 min)",
+      "path": "./protocols/g6_optomotor_osc_walking.yaml"
+    },
+    {
+      "key": "g6_optomotor_osc_flight",
+      "label": "Optomotor oscillation, flight — open loop yaw + roll (0.2 Hz, 3 depths), no plugins (G6 2×10, ~4 min)",
+      "path": "./protocols/g6_optomotor_osc_flight.yaml"
     }
   ]
 }
