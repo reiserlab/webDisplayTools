@@ -1,0 +1,567 @@
+{
+  "configById": {
+    "3D!arena": {
+      "foxglovePanelTitle": "Fly, ball and pattern",
+      "cameraState": {
+        "perspective": true,
+        "distance": 9,
+        "phi": 58,
+        "thetaOffset": 35,
+        "targetOffset": [
+          0,
+          0,
+          1.2
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.1,
+        "far": 1000
+      },
+      "followMode": "follow-pose",
+      "followTf": "arena",
+      "scene": {
+        "backgroundColor": "#0f1419",
+        "enableStats": false,
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0
+        }
+      },
+      "transforms": {},
+      "topics": {
+        "/viz/markers": {
+          "visible": true
+        }
+      },
+      "layers": {},
+      "imageMode": {}
+    },
+    "Image!camera": {
+      "foxglovePanelTitle": "Camera",
+      "imageMode": {
+        "imageTopic": "/camera/image"
+      }
+    },
+    "Tab!view": {
+      "activeTabIdx": 0,
+      "tabs": [
+        {
+          "title": "Arena",
+          "layout": "3D!arena"
+        },
+        {
+          "title": "Camera",
+          "layout": "Image!camera"
+        }
+      ]
+    },
+    "Image!display": {
+      "foxglovePanelTitle": "Arena display (commanded)",
+      "imageMode": {
+        "imageTopic": "/arena/display"
+      }
+    },
+    "Image!observed": {
+      "foxglovePanelTitle": "Arena display (controller-reported)",
+      "imageMode": {
+        "imageTopic": "/arena/display_observed"
+      }
+    },
+    "Tab!display": {
+      "activeTabIdx": 0,
+      "tabs": [
+        {
+          "title": "Display",
+          "layout": "Image!display"
+        },
+        {
+          "title": "Observed",
+          "layout": "Image!observed"
+        }
+      ]
+    },
+    "Indicator!fictrac": {
+      "foxglovePanelTitle": "FicTrac",
+      "path": "/viz/fictrac/rate_hz.data",
+      "style": "background",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "no data",
+      "rules": [
+        {
+          "operator": ">",
+          "rawValue": "5",
+          "color": "#009E73",
+          "label": "tracking"
+        },
+        {
+          "operator": "<=",
+          "rawValue": "5",
+          "color": "#D55E00",
+          "label": "stalled"
+        }
+      ]
+    },
+    "Indicator!arena": {
+      "foxglovePanelTitle": "Arena",
+      "path": "/viz/arena/ok.data",
+      "style": "background",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "no data",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#009E73",
+          "label": "on schedule"
+        },
+        {
+          "operator": "=",
+          "rawValue": "false",
+          "color": "#E69F00",
+          "label": "check"
+        }
+      ]
+    },
+    "Indicator!camera": {
+      "foxglovePanelTitle": "Camera",
+      "path": "/viz/bias/state.data",
+      "style": "background",
+      "fallbackColor": "#8b949e",
+      "fallbackLabel": "no data",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "recording",
+          "color": "#009E73",
+          "label": "recording"
+        },
+        {
+          "operator": "=",
+          "rawValue": "preview",
+          "color": "#E69F00",
+          "label": "preview"
+        },
+        {
+          "operator": "=",
+          "rawValue": "idle",
+          "color": "#E69F00",
+          "label": "idle"
+        },
+        {
+          "operator": "=",
+          "rawValue": "unreachable",
+          "color": "#D55E00",
+          "label": "unreachable"
+        }
+      ]
+    },
+    "StateTransitions!run": {
+      "foxglovePanelTitle": "Trial",
+      "paths": [
+        {
+          "value": "/viz/arena/condition.data",
+          "timestampMethod": "receiveTime",
+          "label": "condition"
+        },
+        {
+          "value": "/viz/arena/state.data",
+          "timestampMethod": "receiveTime",
+          "label": "arena"
+        },
+        {
+          "value": "/viz/bias/state.data",
+          "timestampMethod": "receiveTime",
+          "label": "camera"
+        }
+      ],
+      "isSynced": true
+    },
+    "Plot!position": {
+      "foxglovePanelTitle": "Pattern position in the fly's view (deg)",
+      "paths": [
+        {
+          "value": "/viz/arena/azimuth_deg.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "pattern azimuth",
+          "color": "#E69F00",
+          "showLine": false
+        }
+      ],
+      "showXAxisLabels": false,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60,
+      "minYValue": -180,
+      "maxYValue": 180
+    },
+    "Plot!turning": {
+      "foxglovePanelTitle": "Turning (deg/s)",
+      "paths": [
+        {
+          "value": "/viz/fictrac/speed_dps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "yaw rate",
+          "color": "#56B4E9"
+        }
+      ],
+      "showXAxisLabels": false,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!walking": {
+      "foxglovePanelTitle": "Walking (deg/s of ball rotation)",
+      "paths": [
+        {
+          "value": "/viz/fictrac/fwd_dps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "forward",
+          "color": "#56B4E9"
+        },
+        {
+          "value": "/viz/fictrac/side_dps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "sideways",
+          "color": "#8b949e"
+        }
+      ],
+      "showXAxisLabels": false,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!rates": {
+      "foxglovePanelTitle": "Rates (Hz)",
+      "paths": [
+        {
+          "value": "/viz/fictrac/rate_hz.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "FicTrac",
+          "color": "#56B4E9"
+        },
+        {
+          "value": "/viz/arena/display_rate_hz.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "arena display",
+          "color": "#E69F00"
+        },
+        {
+          "value": "/viz/arena/cmd_fps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "arena commanded",
+          "color": "#E69F00",
+          "lineSize": 0.5
+        },
+        {
+          "value": "/viz/bias/fps.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "camera",
+          "color": "#009E73"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!lag": {
+      "foxglovePanelTitle": "Arena lag (frames; 0 = on schedule)",
+      "paths": [
+        {
+          "value": "/viz/arena/lag_frames.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "observed - expected",
+          "color": "#E69F00"
+        }
+      ],
+      "showXAxisLabels": false,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!cameraloss": {
+      "foxglovePanelTitle": "Camera: dropped frames and writer queue",
+      "paths": [
+        {
+          "value": "/viz/bias/drops.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "dropped (total)",
+          "color": "#D55E00"
+        },
+        {
+          "value": "/viz/bias/log_queue.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "writer queue",
+          "color": "#009E73"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!cpu": {
+      "foxglovePanelTitle": "CPU (busy cores)",
+      "paths": [
+        {
+          "value": "/rig/host.cpu_busy_cores_mean",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "mean",
+          "color": "#CC79A7"
+        },
+        {
+          "value": "/rig/host.cpu_busy_cores_peak",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "peak",
+          "color": "#CC79A7",
+          "lineSize": 0.5
+        }
+      ],
+      "showXAxisLabels": false,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!stall": {
+      "foxglovePanelTitle": "Scheduler stall (ms late)",
+      "paths": [
+        {
+          "value": "/rig/host.sampler_late_ms_max",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "worst wake-up",
+          "color": "#D55E00"
+        }
+      ],
+      "showXAxisLabels": false,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Plot!memory": {
+      "foxglovePanelTitle": "Memory and log disk",
+      "paths": [
+        {
+          "value": "/rig/host.mem_used_mb",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "memory used (MB)",
+          "color": "#CC79A7"
+        },
+        {
+          "value": "/rig/host.log_volume_free_gb",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "log disk free (GB)",
+          "color": "#8b949e"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60
+    },
+    "Table!procs": {
+      "foxglovePanelTitle": "Processes",
+      "topicPath": "/rig/host.procs"
+    },
+    "DiagnosticSummary!health": {
+      "foxglovePanelTitle": "Health",
+      "minLevel": 0,
+      "pinnedIds": [],
+      "hardwareIdFilter": "",
+      "topicToRender": "/diagnostics",
+      "sortByLevel": true
+    },
+    "RawMessages!stimulus": {
+      "foxglovePanelTitle": "Current stimulus",
+      "topicPath": "/arena/stimulus",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "RawMessages!lasterror": {
+      "foxglovePanelTitle": "Last error",
+      "topicPath": "/viz/last_error",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "RosOut!log": {
+      "foxglovePanelTitle": "ROS log (live only)",
+      "searchTerms": [],
+      "minLogLevel": 3,
+      "nameFilter": {}
+    },
+    "Tab!main": {
+      "activeTabIdx": 0,
+      "tabs": [
+        {
+          "title": "Overview",
+          "layout": {
+            "direction": "column",
+            "first": "StateTransitions!run",
+            "second": {
+              "direction": "column",
+              "first": "Plot!position",
+              "second": {
+                "direction": "column",
+                "first": "Plot!turning",
+                "second": {
+                  "direction": "column",
+                  "first": "Plot!walking",
+                  "second": "Plot!rates",
+                  "splitPercentage": 50.0
+                },
+                "splitPercentage": 33.3
+              },
+              "splitPercentage": 25.0
+            },
+            "splitPercentage": 12
+          }
+        },
+        {
+          "title": "Timing",
+          "layout": {
+            "direction": "column",
+            "first": "Plot!lag",
+            "second": "Plot!cameraloss",
+            "splitPercentage": 50.0
+          }
+        },
+        {
+          "title": "Host",
+          "layout": {
+            "direction": "column",
+            "first": {
+              "direction": "column",
+              "first": "Plot!cpu",
+              "second": {
+                "direction": "column",
+                "first": "Plot!stall",
+                "second": "Plot!memory",
+                "splitPercentage": 50.0
+              },
+              "splitPercentage": 33.3
+            },
+            "second": "Table!procs",
+            "splitPercentage": 62
+          }
+        },
+        {
+          "title": "Health",
+          "layout": {
+            "direction": "column",
+            "first": "DiagnosticSummary!health",
+            "second": {
+              "direction": "column",
+              "first": "RawMessages!stimulus",
+              "second": {
+                "direction": "column",
+                "first": "RawMessages!lasterror",
+                "second": "RosOut!log",
+                "splitPercentage": 30
+              },
+              "splitPercentage": 40
+            },
+            "splitPercentage": 30
+          }
+        }
+      ]
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "first": {
+      "direction": "column",
+      "first": "Tab!view",
+      "second": "Tab!display",
+      "splitPercentage": 76
+    },
+    "second": {
+      "direction": "column",
+      "first": {
+        "direction": "row",
+        "first": "Indicator!fictrac",
+        "second": {
+          "direction": "row",
+          "first": "Indicator!arena",
+          "second": "Indicator!camera",
+          "splitPercentage": 50
+        },
+        "splitPercentage": 33.3
+      },
+      "second": "Tab!main",
+      "splitPercentage": 7
+    },
+    "splitPercentage": 50
+  }
+}
