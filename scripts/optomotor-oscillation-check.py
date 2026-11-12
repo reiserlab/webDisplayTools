@@ -1,34 +1,32 @@
 #!/usr/bin/env python3
 """optomotor-oscillation-check.py — what the arena displayed in a run of
-protocols/g6_optomotor_open_loop_oscillation.yaml, from the controller's own frame records.
+protocols/g6_optomotor_osc_walking.yaml or g6_optomotor_osc_flight.yaml, from the
+controller's own frame records.
 
 Input: a behavior_v2 run log (.jsonl / .jsonl.gz) with controller telemetry rows
-(js/arena-telemetry.js):
+(js/arena-telemetry.js) and the runner's step events:
 
     ["cf", rx, t_us, seq, idx, pattern, sd_load_us, spi_us, ...]   one displayed frame change
+    {"event":"runner","phase":"step-start","condition":…,"rx_ms":…}
 
-`t_us` is the controller's micros() and `idx` the frame index it showed, so the rows are the
-arena's reported frame position against the controller clock. Rows are split into stimuli at
-a pattern change or a pause over --gap-s, and each stimulus is classified by its frame count:
+`t_us` is the controller's micros() and `idx` the frame index it showed, so the cf rows are
+the arena's reported frame position against the controller clock. The controller clock is
+mapped to host time with the smallest (rx - t_us) of the frame rows, and each step's frame
+records are the ones inside its interval (--guard-ms cut off both ends). Frame records from
+before the first step are ignored: the controller's ring can still hold frames shown before
+the log opened (ww18, 2026-11-12).
 
-  rotation (--grating-frames, default 20): direction, frames/s, temporal frequency
-  oscillation (--osc-frames, default 200): frames/s, then the frame index is mapped to the
-      pattern's shift, round(A * sin(2*pi*idx/N)), and a sinusoid is fitted to shift(t):
-      frequency, amplitude, RMS residual
+An open-loop trial (`yaw_osc_*`, `roll_osc_*`) is a pattern of --frames frames holding one
+oscillation cycle, played at --fps. The oscillation itself is in the file (checked when
+scripts/make-optomotor-osc-patterns.js builds it); what the arena can get wrong is the
+playback, so per trial this reports and judges:
+    frames/s (pass within --tol of --fps), frame index steps other than +1 (pass: 0),
+    frames per cycle seen (pass: --frames) → cycle time and oscillation frequency,
+    frame interval median / min / max.
+A closed-loop trial (`cl_*`) is host-stepped; its frame records are counted, not judged.
 
-Frames shown BEFORE the run are ignored: the controller's ring can still hold frame records
-from before the log opened (a pattern played in the Console after an upload; ww18,
-2026-11-12). The log's runner events (`{"event":"runner","phase":"step-start","condition",
-"rx_ms"}`) give the run's steps in host time; the controller clock is mapped to host time
-with the smallest (rx - t_us) of the frame rows. A frame record older than the first step is
-dropped, and each stimulus is named by the step it falls in. With the step names the
-direction is checked too: `grating_cw` must step toward increasing column index,
-`grating_ccw` toward decreasing, `grating_osc_1hz` must be the oscillation. A log without
-runner events is judged whole, without names.
-
-Verdict per stimulus and overall. Pass: rotation speed within --tol of ±--rot-fps and a
-steady +1 / -1 index step; oscillation frequency within --tol of --osc-hz, amplitude within
---tol of A, RMS residual under 1 px, no skipped frame index.
+Overall PASS: every open-loop step of the run showed frames and passed. A log without
+runner step events is split at pattern changes and pauses instead, and nothing is named.
 
     python scripts/optomotor-oscillation-check.py run.jsonl
     python scripts/optomotor-oscillation-check.py --json run.jsonl
@@ -41,14 +39,13 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
-import math
+import re
 import statistics
 import sys
 
 U32 = 1 << 32
-
-
-EXPECT = {"grating_cw": ("rotation", 1), "grating_ccw": ("rotation", -1), "grating_osc_1hz": ("oscillation", 1)}
+OPEN_LOOP = re.compile(r"^(yaw|roll)_osc_")
+CLOSED_LOOP = re.compile(r"^cl_")
 
 
 def read_log(path):
@@ -94,17 +91,7 @@ def host_offset_ms(rows):
     return min(lags) if lags else None
 
 
-def step_at(steps, host_ms):
-    """Condition of the last step that started at or before host_ms (None before the first)."""
-    name = None
-    for rx, cond in steps:
-        if rx > host_ms:
-            break
-        name = cond
-    return name
-
-
-def segments(rows, gap_s):
+def by_pattern_and_pause(rows, gap_s):
     seg = []
     for r in rows:
         if seg and (r[2] != seg[-1][2] or r[0] - seg[-1][0] > gap_s):
@@ -123,85 +110,38 @@ def slope(ts, ys):
     return sum((t - mt) * (y - my) for t, y in zip(ts, ys)) / den if den else float("nan")
 
 
-def fit_sine(ts, ys, f):
-    """Least-squares a*sin + b*cos + c at frequency f → (amplitude, rms residual)."""
-    w = 2 * math.pi * f
-    s = [math.sin(w * t) for t in ts]
-    c = [math.cos(w * t) for t in ts]
-    n = len(ts)
-    # normal equations for [a, b, c0]
-    m = [[sum(x * y for x, y in zip(p, q)) for q in (s, c, [1.0] * n)] for p in (s, c, [1.0] * n)]
-    v = [sum(x * y for x, y in zip(p, ys)) for p in (s, c, [1.0] * n)]
-    for i in range(3):  # Gauss-Jordan, 3x3
-        piv = m[i][i]
-        if abs(piv) < 1e-12:
-            return float("nan"), float("inf")
-        m[i] = [x / piv for x in m[i]]
-        v[i] /= piv
-        for j in range(3):
-            if j != i:
-                k = m[j][i]
-                m[j] = [x - k * y for x, y in zip(m[j], m[i])]
-                v[j] -= k * v[i]
-    a, b, c0 = v
-    res = [y - (a * si + b * ci + c0) for y, si, ci in zip(ys, s, c)]
-    return math.hypot(a, b), math.sqrt(sum(r * r for r in res) / n)
-
-
-def best_frequency(ts, ys, f0):
-    """Frequency that minimizes the residual, searched around f0 (coarse grid, then refined)."""
-    lo, hi = 0.5 * f0, 1.5 * f0
-    best = f0
-    for _ in range(4):
-        step = (hi - lo) / 200
-        cands = [lo + i * step for i in range(201)]
-        best = min(cands, key=lambda f: fit_sine(ts, ys, f)[1])
-        lo, hi = best - 2 * step, best + 2 * step
-    return best
-
-
 def analyze(seg, a, cond=None):
     ts = [r[0] - seg[0][0] for r in seg]
     idx = [r[1] for r in seg]
-    n_frames = max(idx) + 1
-    out = {"condition": cond, "pattern": seg[0][2], "records": len(seg), "frame_count_seen": n_frames,
-           "seconds": round(ts[-1], 3)}
-    want = EXPECT.get(cond)
-    if len(seg) < 10:
-        out.update(kind="short", ok=None)
+    patterns = sorted({r[2] for r in seg})
+    seen = max(idx) + 1
+    out = {"condition": cond, "pattern": patterns[0] if len(patterns) == 1 else patterns,
+           "records": len(seg), "seconds": round(ts[-1], 3), "frame_count_seen": seen}
+    if cond is not None and CLOSED_LOOP.match(cond):
+        out.update(kind="closed_loop", distinct_frames=len(set(idx)), ok=None)
         return out
-    known = {a.grating_frames: "rotation", a.osc_frames: "oscillation"}
-    kind = known.get(n_frames)
-    if kind is None:
-        out.update(kind="other", ok=False if want else None)
+    named_open = cond is not None and OPEN_LOOP.match(cond)
+    if not named_open and (cond is not None or seen != a.frames):
+        out.update(kind="other", ok=None)
         return out
-    n = n_frames
+    out["kind"] = "open_loop"
+    if len(seg) < 10 or len(patterns) != 1:
+        out.update(ok=False, why="too few frame records" if len(seg) < 10 else "more than one pattern in the step")
+        return out
+    n = a.frames
     steps = [((idx[i + 1] - idx[i] + n // 2) % n) - n // 2 for i in range(len(idx) - 1)]
     unwrapped = [0]
     for d in steps:
         unwrapped.append(unwrapped[-1] + d)
     fps = slope(ts, unwrapped)
-    dts = [ts[i + 1] - ts[i] for i in range(len(ts) - 1)]
-    out.update(kind=kind, frames_per_s=round(fps, 3),
-               frame_interval_ms={"median": round(1e3 * statistics.median(dts), 3),
-                                  "max": round(1e3 * max(dts), 3)})
-    if kind == "rotation":
-        sign = 1 if fps > 0 else -1
-        steady = all(d == sign for d in steps)
-        out.update(direction="toward increasing column index (+)" if sign > 0 else "toward decreasing column index (-)",
-                   temporal_hz=round(abs(fps) / a.grating_frames, 4), steady_step=steady,
-                   ok=steady and abs(abs(fps) - a.rot_fps) <= a.tol * a.rot_fps
-                   and (want is None or want == ("rotation", sign)))
-        return out
-    skipped = sum(1 for d in steps if d != 1)
-    pos = [round(a.osc_amp * math.sin(2 * math.pi * i / n)) for i in idx]
-    f = best_frequency(ts, pos, a.osc_hz)
-    amp, rms = fit_sine(ts, pos, f)
-    out.update(osc_hz=round(f, 4), amplitude_px=round(amp, 3), rms_residual_px=round(rms, 3),
-               cycles=round(ts[-1] * f, 2), not_plus_one_steps=skipped,
-               ok=(skipped == 0 and abs(f - a.osc_hz) <= a.tol * a.osc_hz
-                   and abs(amp - a.osc_amp) <= a.tol * a.osc_amp and rms < 1.0
-                   and (want is None or want[0] == "oscillation")))
+    dts = [1e3 * (ts[i + 1] - ts[i]) for i in range(len(ts) - 1)]
+    bad_steps = sum(1 for d in steps if d != 1)
+    out.update(frames_per_s=round(fps, 3), not_plus_one_steps=bad_steps,
+               cycle_s=round(n / fps, 4) if fps > 0 else None, osc_hz=round(fps / n, 5),
+               cycles=round(unwrapped[-1] / n, 2),
+               frame_interval_ms={"median": round(statistics.median(dts), 3), "min": round(min(dts), 3),
+                                  "max": round(max(dts), 3)},
+               ok=bad_steps == 0 and seen == n and abs(fps - a.fps) <= a.tol * a.fps)
     return out
 
 
@@ -209,13 +149,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path", help="behavior_v2 run log (.jsonl / .jsonl.gz) with controller cf rows")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
-    ap.add_argument("--gap-s", type=float, default=0.5, help="pause that separates two stimuli (default 0.5)")
-    ap.add_argument("--grating-frames", type=int, default=20)
-    ap.add_argument("--rot-fps", type=float, default=80.0, help="expected |frames/s| of the rotation (default 80)")
-    ap.add_argument("--osc-frames", type=int, default=200)
-    ap.add_argument("--osc-hz", type=float, default=1.0)
-    ap.add_argument("--osc-amp", type=float, default=20.0, help="oscillation amplitude in px (default 20)")
-    ap.add_argument("--tol", type=float, default=0.02, help="relative tolerance (default 0.02 = 2 %%)")
+    ap.add_argument("--fps", type=float, default=150.0, help="expected open-loop frames/s (default 150)")
+    ap.add_argument("--frames", type=int, default=750, help="frames per open-loop pattern = one cycle (default 750)")
+    ap.add_argument("--tol", type=float, default=0.01, help="relative tolerance on frames/s (default 0.01 = 1 %%)")
+    ap.add_argument("--guard-ms", type=float, default=100.0, help="cut from both ends of a step (default 100)")
+    ap.add_argument("--gap-s", type=float, default=0.5, help="without step events: pause that separates stimuli")
     a = ap.parse_args(argv)
 
     rows, steps = read_log(a.path)
@@ -223,42 +161,47 @@ def main(argv=None):
         print("no controller frame records (cf rows) in " + a.path, file=sys.stderr)
         return 2
     off = host_offset_ms(rows) if steps else None
-    before = 0
-    if off is not None:
-        # 50 ms of slack: the offset is a lower bound on the receive lag, not the exact clock map
-        kept = [r for r in rows if r[0] * 1e3 + off >= steps[0][0] - 50.0]
-        before = len(rows) - len(kept)
-        rows = kept
-    res = []
-    for s in segments(rows, a.gap_s):
-        cond = step_at(steps, s[0][0] * 1e3 + off + 50.0) if off is not None else None
-        res.append(analyze(s, a, cond))
-    judged = [r for r in res if r["ok"] is not None]
-    kinds = [r["kind"] for r in judged]
-    ok = bool(judged) and all(r["ok"] for r in judged) and "rotation" in kinds and "oscillation" in kinds
     named = off is not None
-    if named:   # with step names: every stimulus step of the run must have shown its stimulus, in order
-        ran = [c for _, c in steps if c in EXPECT]
-        ok = ok and [r["condition"] for r in res] == ran
+    before = 0
+    res = []
+    if named:
+        host = [r[0] * 1e3 + off for r in rows]
+        before = sum(1 for h in host if h < steps[0][0] - 50.0)   # 50 ms: the offset is a bound, not exact
+        for i, (rx, cond) in enumerate(steps):
+            end = steps[i + 1][0] if i + 1 < len(steps) else float("inf")
+            seg = [r for r, h in zip(rows, host) if rx + a.guard_ms <= h < end - a.guard_ms]
+            if seg:
+                res.append(analyze(seg, a, cond))
+            elif OPEN_LOOP.match(cond):
+                res.append({"condition": cond, "kind": "open_loop", "records": 0, "ok": False,
+                            "why": "no frame records in this step"})
+    else:
+        res = [analyze(s, a) for s in by_pattern_and_pause(rows, a.gap_s)]
+    judged = [r for r in res if r["ok"] is not None]
+    ok = bool(judged) and all(r["ok"] for r in judged)
+
     if a.json:
-        print(json.dumps({"file": a.path, "ok": ok, "records_before_run": before, "steps_named": named,
-                          "stimuli": res}, indent=1))
+        print(json.dumps({"file": a.path, "ok": ok, "records": len(rows), "records_before_run": before,
+                          "steps_named": named, "stimuli": res}, indent=1))
         return 0 if ok else 1
     print(f"{a.path}: {len(rows)} frame records, {len(res)} stimuli"
           + (f"; {before} records from before the run ignored" if before else "")
           + ("" if named else "; no runner step events with rx_ms: stimuli are not named, nothing ignored"))
     for i, r in enumerate(res, 1):
         v = {True: "PASS", False: "FAIL", None: "  - "}[r["ok"]]
-        head = f"  {v} {i:2d}  {(r['condition'] or '-'):<16} pattern {r['pattern']:<3} {r['kind']:<11} {r['seconds']:6.2f} s"
-        if r["kind"] == "rotation":
-            print(f"{head}  {r['frames_per_s']:+8.2f} frames/s = {r['temporal_hz']:.3f} Hz  {r['direction']}"
-                  f"  interval {r['frame_interval_ms']['median']} ms (max {r['frame_interval_ms']['max']})")
-        elif r["kind"] == "oscillation":
-            print(f"{head}  {r['frames_per_s']:+8.2f} frames/s  sinusoid {r['osc_hz']:.4f} Hz, "
-                  f"amplitude {r['amplitude_px']} px, RMS residual {r['rms_residual_px']} px, "
-                  f"{r['cycles']} cycles, steps other than +1: {r['not_plus_one_steps']}")
+        head = f"  {v} {i:2d}  {(r['condition'] or '-'):<16} {r['kind']:<11}"
+        if r.get("records", 0) == 0 or "why" in r:
+            print(f"{head}  {r.get('why', '')}")
+        elif r["kind"] == "open_loop":
+            fi = r["frame_interval_ms"]
+            print(f"{head}  pattern {r['pattern']:<3} {r['seconds']:6.2f} s  {r['frames_per_s']:8.3f} frames/s, "
+                  f"{r['frame_count_seen']} frames per cycle = {r['cycle_s']} s ({r['osc_hz']} Hz), {r['cycles']} cycles, "
+                  f"steps other than +1: {r['not_plus_one_steps']}, interval {fi['median']} ms (min {fi['min']}, max {fi['max']})")
+        elif r["kind"] == "closed_loop":
+            print(f"{head}  pattern {r['pattern']}  {r['seconds']:6.2f} s  {r['records']} frame changes, "
+                  f"{r['distinct_frames']} distinct frames (host-stepped, not judged)")
         else:
-            print(f"{head}  {r['records']} records, frame count seen {r['frame_count_seen']}")
+            print(f"{head}  pattern {r['pattern']}  {r['records']} records, frame count seen {r['frame_count_seen']}")
     print("RESULT: " + ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
