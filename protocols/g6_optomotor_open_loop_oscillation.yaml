@@ -1,0 +1,110 @@
+version: 3
+
+# ============================================================================
+# Open-loop optomotor with a sinusoidal oscillation — G6 2×10 arena, no plugins.
+#
+# Three stimuli, all open loop (mode 2: the controller plays the pattern's frames at a
+# constant frame rate; no FicTrac, no closed loop, no camera plugin), so the SAME file runs
+# for a walking fly and a flying fly:
+#   grating_cw       vertical square-wave grating, constant rotation clockwise
+#   grating_ccw      the same, counterclockwise
+#   grating_osc_1hz  the same grating, its position oscillating sinusoidally at 1 Hz
+#
+# NUMBERS (200 px around = 1.8° per pixel):
+#   grating     period 20 px = 36° (10 px on / 10 px off), every pixel row, GS2
+#   rotation    frame_rate ±80 → 80 px/s = 144°/s = 4 Hz temporal frequency
+#               (period and speed of g6_color_optomotor_test.yaml)
+#   oscillation frame_rate +200, pattern of 200 frames = one cycle → 1 Hz;
+#               position = 20 px · sin(2π·t), i.e. ±36° (one grating period to each
+#               side), rounded to whole pixels; peak speed 125.7 px/s = 226°/s
+#               (peak temporal frequency 6.3 Hz). Starts at zero shift, moving
+#               clockwise first.
+#
+# A constant frame rate cannot make a sinusoid from the rotation pattern, so the
+# oscillation is its own pattern whose frame sequence IS the sinusoid. Both patterns are
+# built by scripts/make-optomotor-oscillation-patterns.js (arena, period, frequency and
+# amplitude are its parameters) into protocols/g6_optomotor_open_loop_oscillation_patterns/.
+# If you change osc_fps here, rebuild the pattern with the same --osc-fps.
+#
+# TIMING: 3 conditions × 4 repetitions × 10 s, 5 s dark between, 5 s dark before and
+# after = 185 s (~3 min). 10 s × 80 frames/s = 40 whole grating periods; 10 s × 200
+# frames/s = 10 whole oscillation cycles.
+#
+# DIRECTION: frame_rate +80 steps the pattern toward increasing column index; on ww18
+# that is clockwise seen from above (g6_color_optomotor smoke run, 2026-10-15). If a rig
+# shows it reversed, swap the fps_cw / fps_ccw values.
+#
+# BEFORE RUNNING: upload the patterns folder from the Console (Patterns → Add ▾) and check
+# that the SD listing shows the two names with 20 and 200 frames.
+# ============================================================================
+
+experiment_info:
+  name: "Open-loop optomotor — CW, CCW, 1 Hz oscillation (~3 min)"
+  author: "Reiser Lab"
+
+rig: "./configs/rigs/cshl_g6_2x10_ball.yaml"
+
+variables:
+  stim_dur: &stim_dur 10          # s — each stimulus: trialParams duration AND its wait
+  gap_dur: &gap_dur 5             # s — dark between stimuli, and before / after the block
+  fps_cw: &fps_cw 80              # frames/s = px/s → 4 Hz temporal frequency at 20 px per period
+  fps_ccw: &fps_ccw -80
+  osc_fps: &osc_fps 200           # frames/s; the oscillation pattern has 200 frames per cycle → 1 Hz
+
+experiment:
+  - "gap"
+  - name: "optomotor_block"
+    trials: ["grating_cw", "grating_ccw", "grating_osc_1hz"]
+    repetitions: 4
+    intertrial: "gap"
+  - "gap"
+
+conditions:
+  - name: "gap"
+    commands:
+      - type: "controller"
+        command_name: "allOff"
+      - type: "wait"
+        duration: *gap_dur
+
+  - name: "grating_cw"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_grat20"
+        pattern_ID: 1
+        duration: *stim_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_cw
+        gain: 0
+      - type: "wait"
+        duration: *stim_dur
+
+  - name: "grating_ccw"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_grat20"
+        pattern_ID: 1
+        duration: *stim_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *fps_ccw
+        gain: 0
+      - type: "wait"
+        duration: *stim_dur
+
+  - name: "grating_osc_1hz"
+    commands:
+      - type: "controller"
+        command_name: "trialParams"
+        pattern: "G6_2x10_grat20_osc1hz"
+        pattern_ID: 2
+        duration: *stim_dur
+        mode: 2
+        frame_index: 0
+        frame_rate: *osc_fps
+        gain: 0
+      - type: "wait"
+        duration: *stim_dur

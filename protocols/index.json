@@ -32,6 +32,11 @@
       "key": "g6_color_optomotor_smoke",
       "label": "Color optomotor SMOKE — 10 s per pattern, duty 100 %, BIAS check (~2 min)",
       "path": "./protocols/g6_color_optomotor_smoke.yaml"
+    },
+    {
+      "key": "g6_optomotor_open_loop_oscillation",
+      "label": "Open-loop optomotor — CW, CCW, 1 Hz sinusoidal oscillation (G6 2×10, no plugins, ~3 min)",
+      "path": "./protocols/g6_optomotor_open_loop_oscillation.yaml"
     }
   ]
 }
