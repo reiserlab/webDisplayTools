@@ -424,4 +424,358 @@ check('buildPages → the five SBD pages with CSV rows', () => {
     assert.ok(group[0].figure.data.length >= 3);
 });
 
+// ---- v1/v2 runs know nothing of the v3 stages --------------------------
+check('v1/v2 run: no heat-off bouts, summary lists only preprobe / training / probe', () => {
+    assert.deepStrictEqual(
+        bouts.map((row) => row.heatOff),
+        [false, false, false, false]
+    );
+    const s = A.sbdStageSummary(run);
+    assert.deepStrictEqual(s.stages, ['preprobe', 'training', 'probe']);
+    for (const stage of ['sham_preprobe', 'probe_mid', 'sham_probe']) {
+        assert.strictEqual(s[stage].bouts, 0, stage + ' has no bouts');
+        assert.ok(Number.isNaN(s[stage].preference), stage + ' PI is NaN');
+    }
+    assert.strictEqual(s.preprobe.shortLabel, 'before');
+    assert.strictEqual(s.probe.shortLabel, 'test');
+    assert.strictEqual(s.training.heatOff, false);
+    const pages = P.buildPages([run], { mode: 'single', showIndividuals: true });
+    // the sequence pages label the tests and number the bouts
+    assert.deepStrictEqual(pages[0].figure.layout.xaxis.ticktext, ['before', '1', '2', 'test']);
+    // the stage pages show only the stages the run ran
+    assert.deepStrictEqual(pages[4].figure.data[0].x, ['preprobe', 'training', 'probe']);
+    assert.strictEqual(pages[3].figure.data.length, 3);
+    assert.strictEqual(pages[0].csvRows[0].heat_off, false);
+});
+
+// ---- stage mapping for the v3 / v4 condition names -----------------------
+check('sbdStage: sham / mid tests are their own stages, v4 train_k<k>_<side> is training', () => {
+    assert.strictEqual(A.sbdStage('sham_preprobe'), 'sham_preprobe');
+    assert.strictEqual(A.sbdStage('probe_mid'), 'probe_mid');
+    assert.strictEqual(A.sbdStage('sham_probe'), 'sham_probe');
+    assert.strictEqual(A.sbdStage('preprobe'), 'preprobe');
+    assert.strictEqual(A.sbdStage('probe'), 'probe');
+    for (const name of [
+        'train_plus',
+        'train_minus',
+        'train_k0_plus',
+        'train_k3_minus',
+        'pair_m1_p2'
+    ])
+        assert.strictEqual(A.sbdStage(name), 'training', name);
+    for (const name of ['blank', 'optomotor_cw', 'led_off', 'train_k10_plus', 'probe_x'])
+        assert.strictEqual(A.sbdStage(name), '', name);
+    assert.deepStrictEqual(A.SBD_STAGES, [
+        'sham_preprobe',
+        'preprobe',
+        'training',
+        'probe_mid',
+        'sham_probe',
+        'probe'
+    ]);
+    assert.deepStrictEqual(A.SBD_SHAM_STAGES, ['sham_preprobe', 'sham_probe']);
+    assert.strictEqual(A.sbdIsHeatOff('sham_probe'), true);
+    assert.strictEqual(A.sbdIsHeatOff('probe_mid'), false);
+    assert.deepStrictEqual(A.SBD_STAGE_SHORT, {
+        sham_preprobe: 'sham before',
+        preprobe: 'before',
+        training: 'training',
+        probe_mid: 'mid test',
+        sham_probe: 'sham test',
+        probe: 'test'
+    });
+});
+check('a renamed v4 uncoupled copy (train_k<k>_<side> + preprobe) routes to sbd-place', () => {
+    const info = A.protocolInfo({ protocol_filename: 'x.yaml' }, [
+        'sham_preprobe',
+        'preprobe',
+        'train_k0_plus',
+        'train_k1_minus',
+        'probe_mid'
+    ]);
+    assert.strictEqual(info.family, 'sbd-place');
+    assert.strictEqual(info.sbdVersion, 'v3');
+});
+
+// ---- a synthetic v3/v4-style coupled run ---------------------------------
+// sham_preprobe(+) preprobe(−) train_01(+) train_02(−) probe_mid(+) train_03(−)
+// sham_probe(−) probe(+); the shams carry NO ledActivation (LED off, ledDrive 0 before).
+const lines3 = [];
+const push3 = (obj) => lines3.push(JSON.stringify(obj));
+push3({ type: 'session', event: 'logging_started', ms: T0 });
+push3({
+    type: 'frame_schema',
+    level: 'behavior_v2',
+    cols: ['ms', 'fc', 'idx', 'ft', 'x', 'y', 'hd'],
+    arena_cols: ['t_off', 'dt', 'hex', 'status', 'rx_off'],
+    t0: T0
+});
+push3({
+    type: 'log',
+    event: 'run_metadata',
+    run_id: 'sbdtest3',
+    rig_id: 'rig03-sr',
+    protocol_filename: 'p3-sbd-placelearning-coupled-v4-led14.yaml',
+    experimenter: 'test',
+    genotype: 'none',
+    rx_ms: T0 + 1
+});
+let fc3 = 5000;
+function frames3(fromMs, toMs, indexAt) {
+    for (let ms = fromMs; ms <= toMs; ms += 10) {
+        fc3 += 1;
+        push3([ms, fc3, indexAt(ms), ms, 0, 0, 0]);
+    }
+}
+const V3_STEPS = [
+    // [condition, start frame, ledActivation (undefined = LED off), fly index over the 2 s bout]
+    ['sham_preprobe', 57, undefined, () => 80], // opposite sector the whole time — heat frames, LED OFF
+    ['preprobe', 108, UNIFORM, () => 80],
+    ['train_plus', 57, HEAT, (t) => (t < 1000 ? 57 : 180)],
+    ['train_minus', 108, HEAT, () => 180],
+    ['probe_mid', 57, UNIFORM, (t) => (t < 500 ? 57 : 183)],
+    ['train_k0_minus', 108, HEAT, () => 180], // the v4 uncoupled name
+    ['sham_probe', 108, undefined, () => 183], // zone centre the whole time, LED OFF
+    ['probe', 57, UNIFORM, () => 190]
+];
+V3_STEPS.forEach(([condition, initPos, ledActivation, indexAt], index) => {
+    const base = 1000 + index * 3000;
+    push3({
+        type: 'log',
+        event: 'runner',
+        phase: 'step-start',
+        index,
+        condition,
+        rx_ms: T0 + base
+    });
+    const trial = {
+        type: 'log',
+        event: 'runner',
+        phase: 'trial-running',
+        index,
+        condition,
+        durationSec: 2,
+        params: { mode: 3, patternId: 46, initPos },
+        rx_ms: T0 + base
+    };
+    if (ledActivation) trial.ledActivation = ledActivation;
+    push3(trial);
+    frames3(base, base + 2000, (ms) => indexAt(ms - base));
+    push3({
+        type: 'log',
+        event: 'runner',
+        phase: 'step-done',
+        index,
+        condition,
+        rx_ms: T0 + base + 2010
+    });
+});
+push3({
+    type: 'log',
+    event: 'runner',
+    phase: 'sequence-complete',
+    rx_ms: T0 + 1000 + V3_STEPS.length * 3000,
+    summary: { completed: true }
+});
+const run3 = A.parseJsonl(
+    lines3.join('\n'),
+    'p3-sbd-placelearning-coupled-v4-led14__test__x__sbdtest3.jsonl',
+    '/x/sbd3.jsonl',
+    { ballDiameterMm: 9, smoothWindowS: 0.5 }
+);
+const v3 = A.sbdBouts(run3);
+
+check('v4 run classifies as sbd-place / coupled v4', () => {
+    assert.strictEqual(run3.protocolInfo.family, 'sbd-place');
+    assert.strictEqual(run3.protocolInfo.sbdVariant, 'coupled');
+    assert.strictEqual(run3.protocolInfo.sbdVersion, 'v4');
+});
+check(
+    'v3/v4 bouts: every test is its own stage, positions line up across protocol versions',
+    () => {
+        assert.strictEqual(v3.bouts.length, 8);
+        assert.strictEqual(v3.trainingBouts, 3);
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.stage),
+            [
+                'sham_preprobe',
+                'preprobe',
+                'training',
+                'training',
+                'probe_mid',
+                'training',
+                'sham_probe',
+                'probe'
+            ]
+        );
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.label),
+            [
+                'sham_preprobe',
+                'preprobe',
+                'train_01',
+                'train_02',
+                'probe_mid',
+                'train_03',
+                'sham_probe',
+                'probe'
+            ]
+        );
+        // sham before −1, before 0, train_k = k, mid test / sham test = k + 0.5 after bout k, test = N + 1
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.position),
+            [-1, 0, 1, 2, 2.5, 3, 3.5, 4]
+        );
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.bout),
+            [null, null, 1, 2, null, 3, null, null]
+        );
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.side),
+            ['+', '-', '+', '-', '+', '-', '-', '+']
+        );
+    }
+);
+check(
+    'v3/v4 heat flags: shams are heat-off (LED on 0 even in heat frames), not uniform heat',
+    () => {
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.heatOff),
+            [true, false, false, false, false, false, true, false]
+        );
+        assert.deepStrictEqual(
+            v3.bouts.map((row) => row.uniformHeat),
+            [false, true, false, false, true, false, false, true]
+        );
+        const [shamPre, pre, t1, , mid, , shamProbe, probe] = v3.bouts;
+        // sham_preprobe sits at frame 80 (a heat frame) the whole time, yet the LED was off
+        assert.strictEqual(shamPre.ledOnFraction, 0);
+        assert.strictEqual(pre.ledOnFraction, 1); // the same frames with uniform heat
+        assert.strictEqual(shamProbe.ledOnFraction, 0);
+        assert.strictEqual(mid.ledOnFraction, 1);
+        assert.strictEqual(probe.ledOnFraction, 1);
+        assert.ok(
+            Math.abs(t1.ledOnFraction - 0.5) < 0.02,
+            'train_01 LED on ~50 %: ' + t1.ledOnFraction
+        );
+    }
+);
+check('v3/v4 shams and mid test are scored on the same zone geometry as the probe', () => {
+    assert.deepStrictEqual(v3.zone.heat, [8, 158]);
+    const [shamPre, , , , mid, , shamProbe, probe] = v3.bouts;
+    assert.strictEqual(shamPre.safeFraction, 0);
+    assert.strictEqual(shamPre.oppositeFraction, 1);
+    assert.strictEqual(shamPre.preference, -1);
+    assert.ok(Number.isNaN(shamPre.firstEntrySec));
+    assert.strictEqual(shamProbe.safeFraction, 1);
+    assert.strictEqual(shamProbe.preference, 1);
+    assert.strictEqual(shamProbe.firstEntrySec, 0);
+    assert.ok(Math.abs(mid.safeFraction - 0.75) < 0.02, 'mid test ~75 % safe: ' + mid.safeFraction);
+    assert.ok(Math.abs(mid.firstEntrySec - 0.5) < 0.02);
+    assert.strictEqual(mid.preference, 1);
+    assert.strictEqual(probe.preference, 1);
+});
+check('v3/v4 stage summary lists all six stages in protocol order with short labels', () => {
+    const s = A.sbdStageSummary(run3);
+    assert.deepStrictEqual(s.stages, A.SBD_STAGES);
+    assert.strictEqual(s.trainingBouts, 3);
+    assert.deepStrictEqual(
+        s.stages.map((stage) => s[stage].bouts),
+        [1, 1, 3, 1, 1, 1]
+    );
+    assert.deepStrictEqual(
+        s.stages.map((stage) => s[stage].shortLabel),
+        ['sham before', 'before', 'training', 'mid test', 'sham test', 'test']
+    );
+    assert.deepStrictEqual(
+        s.stages.map((stage) => s[stage].heatOff),
+        [true, false, false, false, true, false]
+    );
+    assert.strictEqual(s.sham_preprobe.ledOnFraction, 0);
+    assert.strictEqual(s.sham_probe.ledOnFraction, 0);
+    assert.strictEqual(s.probe_mid.ledOnFraction, 1);
+    assert.strictEqual(s.sham_preprobe.preference, -1);
+    assert.strictEqual(s.sham_probe.preference, 1);
+    assert.strictEqual(s.probe_mid.preference, 1);
+    assert.strictEqual(A.sbdOccupancy(run3, 'sham_probe', 100).samples, 201);
+});
+check(
+    'v3/v4 pages: the stage pages gain the sham / mid stages, the sequence axis labels them',
+    () => {
+        const pages = P.buildPages([run3], { mode: 'single', showIndividuals: true });
+        assert.deepStrictEqual(
+            pages.map((page) => page.id),
+            [
+                'sbd-zone-occupancy',
+                'sbd-first-entry',
+                'sbd-led-on',
+                'sbd-occupancy',
+                'sbd-preference'
+            ]
+        );
+        assert.deepStrictEqual(
+            pages[0].figure.layout.xaxis.tickvals,
+            [-1, 0, 1, 2, 2.5, 3, 3.5, 4]
+        );
+        assert.deepStrictEqual(pages[0].figure.layout.xaxis.ticktext, [
+            'sham before',
+            'before',
+            '1',
+            '2',
+            'mid test',
+            '3',
+            'sham test',
+            'test'
+        ]);
+        // one shaded band per test (5), none for the training bouts
+        assert.strictEqual(
+            pages[0].figure.layout.shapes.filter((shape) => shape.type === 'rect').length,
+            5
+        );
+        assert.strictEqual(pages[0].csvRows.length, 8);
+        assert.strictEqual(pages[0].csvRows[0].heat_off, true);
+        assert.strictEqual(pages[0].csvRows[0].stage, 'sham_preprobe');
+        // LED page: the sham tests plot 0
+        const ledMean = pages[2].figure.data[pages[2].figure.data.length - 1];
+        assert.strictEqual(ledMean.y[0], 0);
+        assert.strictEqual(ledMean.y[6], 0);
+        assert.strictEqual(ledMean.y[1], 100);
+        // occupancy: one trace per stage present
+        assert.strictEqual(pages[3].figure.data.length, 6);
+        assert.deepStrictEqual(
+            pages[3].figure.data.map((trace) => trace.name),
+            [
+                'sham before (LED off)',
+                'before (uniform heat)',
+                'training (heat outside the zone)',
+                'mid test (uniform heat)',
+                'sham test (LED off)',
+                'test (uniform heat)'
+            ]
+        );
+        // preference: six bars, labelled with the short names
+        const bar = pages[4].figure.data[pages[4].figure.data.length - 1];
+        assert.deepStrictEqual(bar.x, A.SBD_STAGES);
+        assert.deepStrictEqual(pages[4].figure.layout.xaxis.ticktext, [
+            'sham before',
+            'before',
+            'training',
+            'mid test',
+            'sham test',
+            'test'
+        ]);
+        assert.strictEqual(bar.y[0], -1);
+        assert.strictEqual(bar.y[4], 1);
+        const prefRows = pages[4].csvRows;
+        assert.strictEqual(prefRows.length, 6);
+        assert.strictEqual(prefRows[0].stage_label, 'sham before');
+        assert.strictEqual(prefRows[0].heat_off, true);
+        // a mixed group (v1/v2 + v4) shows the union of stages, still in protocol order
+        const mixed = P.buildPages([run, run3], { mode: 'group', showIndividuals: true });
+        const mixedBar = mixed[4].figure.data[mixed[4].figure.data.length - 1];
+        assert.deepStrictEqual(mixedBar.x, A.SBD_STAGES);
+        assert.strictEqual(mixed[3].figure.data.length, 6);
+    }
+);
+
 console.log(`\n${total} / ${total} checks passed`);

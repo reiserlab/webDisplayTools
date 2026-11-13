@@ -2818,12 +2818,23 @@
     // Rig03 port of the G4.1 p058 / p066 / p067 protocols: pattern 46, a 90°
     // LED-off safe zone on the bars|stripes seam, graded heat outside it, 40 s
     // bouts opening ±90° outside the zone. One row per closed-loop bout from
-    // A.sbdBouts (the uncoupled control runs two bouts per step).
-    const SBD_STAGES = [
-        { key: 'preprobe', name: 'preprobe (uniform heat)', color: COLORS.cyan },
-        { key: 'training', name: 'training (heat outside the zone)', color: COLORS.magenta },
-        { key: 'probe', name: 'probe (uniform heat)', color: COLORS.green }
-    ];
+    // A.sbdBouts (the uncoupled control runs two bouts per step). The v3/v4
+    // protocols add two LED-off sham tests and a heated mid test; a page shows
+    // only the stages the loaded runs actually ran (A.sbdStagesPresent), so a
+    // v1/v2 run still shows preprobe / training / probe.
+    const SBD_STAGE_STYLE = {
+        sham_preprobe: { name: 'sham before (LED off)', color: COLORS.static },
+        preprobe: { name: 'before (uniform heat)', color: COLORS.cyan },
+        training: { name: 'training (heat outside the zone)', color: COLORS.magenta },
+        probe_mid: { name: 'mid test (uniform heat)', color: COLORS.amber },
+        sham_probe: { name: 'sham test (LED off)', color: COLORS.purple },
+        probe: { name: 'test (uniform heat)', color: COLORS.green }
+    };
+
+    /** The SBD stages present in the runs' bout lists, in protocol order, with legend name + colour. */
+    function sbdStages(boutLists) {
+        return A.sbdStagesPresent(boutLists).map((key) => ({ key, ...SBD_STAGE_STYLE[key] }));
+    }
 
     function sbdLayout(extra) {
         return {
@@ -2864,6 +2875,7 @@
                 pattern_id: row.patternId,
                 rotation_k: row.rotationK == null ? '' : row.rotationK,
                 uniform_heat: row.uniformHeat,
+                heat_off: row.heatOff,
                 samples: row.samples,
                 safe_fraction: row.safeFraction,
                 opposite_fraction: row.oppositeFraction,
@@ -2878,17 +2890,23 @@
 
     /**
      * Sequence page: one value per bout along the run (0 = preprobe, 1..N bouts,
-     * N+1 = probe). Group mode draws thin per-fly lines and the mean ± SEM.
+     * N+1 = probe; the v3/v4 sham / mid tests sit at −1 and k + 0.5). Group mode
+     * draws thin per-fly lines and the mean ± SEM.
      */
     function sbdSequencePage(runs, options, spec) {
         const perRun = sbdPerRun(runs);
         const traces = [];
-        const positions = [
-            ...new Set(perRun.flatMap((item) => item.bouts.map((row) => row.position)))
-        ]
-            .filter(Number.isFinite)
-            .sort((a, b) => a - b);
+        // position → the stage at that position (tests are labelled, training bouts numbered)
+        const stageAt = new Map();
+        perRun.forEach((item) =>
+            item.bouts.forEach((row) => {
+                if (Number.isFinite(row.position) && !stageAt.has(row.position))
+                    stageAt.set(row.position, row.stage);
+            })
+        );
+        const positions = [...stageAt.keys()].sort((a, b) => a - b);
         const lastPosition = positions.length ? positions[positions.length - 1] : 1;
+        const firstPosition = positions.length ? positions[0] : 0;
         const valueAt = (item, position) => {
             const row = item.bouts.find((candidate) => candidate.position === position);
             return row ? spec.value(row) : NaN;
@@ -2930,24 +2948,23 @@
             hovertemplate: `bout %{x}<br>${spec.hover}<extra></extra>`
         });
         const shapes = [];
-        // preprobe / probe bands
-        [
-            { from: -0.5, to: 0.5, color: rgba(COLORS.cyan, 0.1) },
-            { from: lastPosition - 0.5, to: lastPosition + 0.5, color: rgba(COLORS.green, 0.1) }
-        ].forEach((band) =>
-            shapes.push({
-                type: 'rect',
-                xref: 'x',
-                yref: 'paper',
-                x0: band.from,
-                x1: band.to,
-                y0: 0,
-                y1: 1,
-                fillcolor: band.color,
-                line: { width: 0 },
-                layer: 'below'
-            })
-        );
+        // one band per test (preprobe, probe and the v3/v4 sham / mid tests) in the stage colour
+        positions
+            .filter((position) => stageAt.get(position) !== 'training')
+            .forEach((position) =>
+                shapes.push({
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'paper',
+                    x0: position - 0.5,
+                    x1: position + 0.5,
+                    y0: 0,
+                    y1: 1,
+                    fillcolor: rgba(SBD_STAGE_STYLE[stageAt.get(position)].color, 0.1),
+                    line: { width: 0 },
+                    layer: 'below'
+                })
+            );
         if (Number.isFinite(spec.reference)) {
             shapes.push({
                 type: 'line',
@@ -2961,9 +2978,10 @@
             });
         }
         const tickvals = positions;
-        const ticktext = positions.map((position) =>
-            position === 0 ? 'pre' : position === lastPosition ? 'probe' : String(position)
-        );
+        const ticktext = positions.map((position) => {
+            const stage = stageAt.get(position);
+            return stage === 'training' ? String(position) : A.SBD_STAGE_SHORT[stage];
+        });
         return {
             id: spec.id,
             title: spec.title,
@@ -2973,10 +2991,10 @@
                 layout: sbdLayout({
                     shapes,
                     xaxis: {
-                        title: 'bout (pre = preprobe)',
+                        title: 'bout (tests labelled: before = preprobe, test = probe)',
                         tickvals,
                         ticktext,
-                        range: [-0.7, lastPosition + 0.7],
+                        range: [firstPosition - 0.7, lastPosition + 0.7],
                         gridcolor: COLORS.grid
                     },
                     yaxis: {
@@ -2996,7 +3014,7 @@
         return sbdSequencePage(runs, options, {
             id: 'sbd-zone-occupancy',
             title: 'SBD time in the safe zone per bout',
-            description: `Fraction of each bout's frame samples inside the LED-off safe zone (${zone.size} of 200 frames; dashed line = chance). Preprobe and probe run with uniform heat, so the same zone is scored there as a memory test.`,
+            description: `Fraction of each bout's frame samples inside the LED-off safe zone (${zone.size} of 200 frames; dashed line = chance). Preprobe and probe run with uniform heat, so the same zone is scored there as a memory test; the v3/v4 sham tests (LED off throughout) and the mid test are scored on the same zone.`,
             value: (row) => (Number.isFinite(row.safeFraction) ? row.safeFraction * 100 : NaN),
             yLabel: 'Time in the safe zone (%)',
             yRange: [0, 100],
@@ -3024,7 +3042,7 @@
             id: 'sbd-led-on',
             title: 'SBD LED-on fraction per bout',
             description:
-                "Fraction of each bout's frame samples on which the opto LED was on (heat zone including the ramps), from the bout's own logged led_activation. Uniform-heat bouts (preprobe, probe) are 100 % by design.",
+                "Fraction of each bout's frame samples on which the opto LED was on (heat zone including the ramps), from the bout's own logged led_activation. Uniform-heat bouts (preprobe, mid test, probe) are 100 % by design; the v3/v4 sham tests run with the LED off and are 0.",
             value: (row) => (Number.isFinite(row.ledOnFraction) ? row.ledOnFraction * 100 : NaN),
             yLabel: 'LED on (%)',
             yRange: [0, 100],
@@ -3038,7 +3056,8 @@
         const zone = A.sbdZone(runs[0]);
         const traces = [];
         const csvRows = [];
-        SBD_STAGES.forEach((stage) => {
+        const stages = sbdStages(sbdPerRun(runs).map((item) => item.bouts));
+        stages.forEach((stage) => {
             const perRun = runs.map((run) => A.sbdOccupancy(run, stage.key, binCount));
             const angle = perRun[0] ? perRun[0].angle : [];
             const mean = angle.map((_, index) =>
@@ -3137,7 +3156,11 @@
         const summaries = runs.map((run) => ({ run, summary: A.sbdStageSummary(run) }));
         const traces = [];
         const csvRows = [];
-        const x = SBD_STAGES.map((stage) => stage.key);
+        // stages present in any of the runs, in protocol order
+        const stages = A.SBD_STAGES.filter((key) =>
+            summaries.some((item) => item.summary[key].bouts > 0)
+        ).map((key) => ({ key, ...SBD_STAGE_STYLE[key] }));
+        const x = stages.map((stage) => stage.key);
         if (options.mode === 'group' && options.showIndividuals) {
             summaries.forEach((item) =>
                 traces.push({
@@ -3169,8 +3192,8 @@
                     ? `mean ± SEM (${summaries.length} flies)`
                     : 'preference index',
             marker: {
-                color: SBD_STAGES.map((stage) => rgba(stage.color, 0.55)),
-                line: { color: SBD_STAGES.map((stage) => stage.color), width: 1.5 }
+                color: stages.map((stage) => rgba(stage.color, 0.55)),
+                line: { color: stages.map((stage) => stage.color), width: 1.5 }
             },
             error_y:
                 options.mode === 'group'
@@ -3186,6 +3209,8 @@
                     level: 'fly_stage',
                     run_id: item.run.id,
                     stage,
+                    stage_label: s.shortLabel,
+                    heat_off: s.heatOff,
                     bouts: s.bouts,
                     samples: s.samples,
                     safe_fraction: s.safeFraction,
@@ -3198,7 +3223,7 @@
             id: 'sbd-preference',
             title: 'SBD place preference index by stage',
             description:
-                'Time-weighted (t safe − t opposite) / (t safe + t opposite) over all frame samples of a stage, where "opposite" is the safe zone rotated by 180° (the Florence / Ofstad probe PI). +1 = always in the zone, −1 = always opposite; 0 = no place preference. Training pools every bout.' +
+                'Time-weighted (t safe − t opposite) / (t safe + t opposite) over all frame samples of a stage, where "opposite" is the safe zone rotated by 180° (the Florence / Ofstad probe PI). +1 = always in the zone, −1 = always opposite; 0 = no place preference. Training pools every bout. v3/v4 runs add the LED-off sham tests (sham before / sham test = innate preference for the picture) and the heated mid test.' +
                 sbdVariantNote(runs),
             figure: {
                 data: traces,
@@ -3215,7 +3240,12 @@
                             line: { color: COLORS.muted, width: 1 }
                         }
                     ],
-                    xaxis: { title: 'stage', gridcolor: COLORS.grid },
+                    xaxis: {
+                        title: 'stage',
+                        tickvals: x,
+                        ticktext: stages.map((stage) => A.SBD_STAGE_SHORT[stage.key]),
+                        gridcolor: COLORS.grid
+                    },
                     yaxis: {
                         title: 'Preference index',
                         range: [-1.05, 1.05],
