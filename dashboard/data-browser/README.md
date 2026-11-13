@@ -132,8 +132,17 @@ the tooltip naming the end state. Optional columns: age, experimenter, file size
   p071 port with sham tests and a mid probe) are read from the filename and shown
   in the label of a loaded run, e.g. "SBD place learning (coupled v3)". The run
   catalog and the group filter show the family id (`sbd-place`), so all variants
-  and LED levels form one group. The v3 sham /
-  mid-probe stages are not yet scored here (the local sbd-dashboard scores them).
+  and LED levels form one group.
+- v3/v4 stages: `sham_preprobe` (before the preprobe) and `sham_probe` (after the
+  last training bout, before the probe) are closed-loop tests with the LED off
+  throughout (no `led_activation`, `ledDrive 0` before the trial), `probe_mid` is
+  a heated test after bout 10. All three are scored like the probe, on the same
+  zone geometry; the sham bouts carry `heat_off = true` and an LED-on fraction of
+  0. Bout positions line up across protocol versions: sham before −1, before 0,
+  train_k = k, mid test / sham test = k + 0.5 after bout k, test = N + 1. The
+  stage pages show only the stages a run ran, with the short labels "sham before",
+  "before", "training", "mid test", "sham test", "test". The v4 uncoupled control
+  names its bouts `train_k<k>_<plus|minus>` and is recognised like `pair_m<k>_p<k>`.
 - Family `optomotor`: the optomotor ± opto LED tests (`optomotor_led_test`,
   `optomotor_test_60deg`, `optomotor_test_60deg_tf`; conditions `grating_cw_noled`,
   `grating_cw_led`, …), classified before the p0 rule, which would otherwise claim

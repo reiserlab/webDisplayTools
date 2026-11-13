@@ -235,11 +235,11 @@
         // protocols) — checked BEFORE the p3 families: the files are named
         // p3-sbd-… and the bare "p3" substring would otherwise send them to the
         // Heisenberg T-figure analysis. Condition names are the fallback for a
-        // renamed copy (sbd-bias-…): train_plus/train_minus or the uncoupled
-        // control's pair_m<k>_p<k> steps, always with a preprobe.
+        // renamed copy (sbd-bias-…): train_plus/train_minus, the v4 uncoupled
+        // control's train_k<k>_<plus|minus> or the v1/v2 uncoupled control's
+        // pair_m<k>_p<k> steps, always with a preprobe.
         const sbdNames =
-            names.includes('preprobe') &&
-            names.some((name) => /^(train_(plus|minus)|pair_m\d_p\d)$/.test(name));
+            names.includes('preprobe') && names.some((name) => SBD_TRAINING_RE.test(name));
         if (filename.includes('sbd') || sbdNames) {
             const variant = filename.includes('uncoupled')
                 ? 'uncoupled'
@@ -1395,22 +1395,62 @@
     // stripes | diagonal), a 90° LED-off SAFE ZONE on the bars/stripes seam,
     // graded 15° heat ramps outside it, bouts opening ±90° outside the zone.
     // Stages: preprobe (uniform heat) → training bouts → probe (uniform heat).
+    // The v3 protocols (p071 port, 2026-10-28) add three more TESTS around the
+    // training: sham_preprobe before the preprobe and sham_probe before the
+    // probe (closed loop with the LED OFF — the innate preference for the
+    // picture) and a heated probe_mid after bout 10. Every test is scored like
+    // the probe, on the same zone geometry.
     // The uncoupled control (p067 port) runs TWO bouts per step (pair_m<k>_p<k>,
     // each with its own picture rotation k), so the unit of analysis is the
-    // Mode-3 trialParams INTERVAL, not the step. Everything is scored in frame
-    // space: the heat map is fixed in frames for every variant, which is the
-    // point of the uncoupled control.
+    // Mode-3 trialParams INTERVAL, not the step; the v4 uncoupled control (p077
+    // port) names each bout train_k<k>_<plus|minus> instead. Everything is
+    // scored in frame space: the heat map is fixed in frames for every variant,
+    // which is the point of the uncoupled control.
     // ------------------------------------------------------------------
     const SBD_FRAME_COUNT = 200;
     const SBD_DEFAULT_HEAT = [8, 158]; // [a, d): LED on (ramps included) → safe = 158..199 + 0..7
     const SBD_PATTERN_ROTATION = { 46: 0, 47: 1, 48: 2, 49: 3 }; // SD id → k (× 90°)
+    // Stages in protocol order; the tests are everything but 'training'.
+    const SBD_STAGES = [
+        'sham_preprobe',
+        'preprobe',
+        'training',
+        'probe_mid',
+        'sham_probe',
+        'probe'
+    ];
+    const SBD_TEST_STAGES = ['sham_preprobe', 'preprobe', 'probe_mid', 'sham_probe', 'probe'];
+    // Sham tests run with the LED off throughout (no led_activation on the
+    // trialParams, ledDrive 0 before it), so every heat statistic is 0 there.
+    const SBD_SHAM_STAGES = ['sham_preprobe', 'sham_probe'];
+    const SBD_STAGE_SHORT = {
+        sham_preprobe: 'sham before',
+        preprobe: 'before',
+        training: 'training',
+        probe_mid: 'mid test',
+        sham_probe: 'sham test',
+        probe: 'test'
+    };
+    // train_plus / train_minus (coupled), train_k<k>_<plus|minus> (v4 uncoupled),
+    // pair_m<k>_p<k> (v1/v2 uncoupled, two bouts per step)
+    const SBD_TRAINING_RE = /^(train_(k\d_)?(plus|minus)|pair_m\d_p\d)$/;
 
     function sbdStage(condition) {
         const name = safeText(condition);
-        if (name === 'preprobe') return 'preprobe';
-        if (name === 'probe') return 'probe';
-        if (/^(train_(plus|minus)|pair_m\d_p\d)$/.test(name)) return 'training';
+        if (SBD_TEST_STAGES.includes(name)) return name;
+        if (SBD_TRAINING_RE.test(name)) return 'training';
         return '';
+    }
+
+    function sbdIsHeatOff(stage) {
+        return SBD_SHAM_STAGES.includes(stage);
+    }
+
+    /** SBD_STAGES, in protocol order, restricted to those with a bout in any of the bout lists. */
+    function sbdStagesPresent(boutLists) {
+        const seen = new Set();
+        for (const rows of boutLists || []) for (const row of rows || []) seen.add(row.stage);
+        return SBD_STAGES.filter((stage) => seen.has(stage));
     }
 
     function sbdIsClosedLoop(interval) {
@@ -1472,13 +1512,17 @@
     }
 
     /**
-     * One row per closed-loop bout (preprobe, train_01…train_N, probe), scored on
-     * the frame samples the bridge logged inside the bout's trialParams interval:
-     * safe-zone fraction, opposite-sector fraction, time-weighted preference
+     * One row per closed-loop bout ([sham_preprobe,] preprobe, train_01…train_N
+     * [, probe_mid, sham_probe], probe), scored on the frame samples the bridge
+     * logged inside the bout's trialParams interval: safe-zone fraction,
+     * opposite-sector fraction, time-weighted preference
      * (safe − opposite) / (safe + opposite), LED-on fraction from the bout's own
-     * heat span (1 for uniform heat), seconds to the first safe-zone sample,
-     * start frame / side, pattern id and its rotation k. `position` is the x
-     * for sequence plots: 0 = preprobe, 1..N bouts, N+1 = probe.
+     * heat span (1 for uniform heat, 0 for the LED-off sham tests), seconds to
+     * the first safe-zone sample, start frame / side, pattern id and its
+     * rotation k. `position` is the x for sequence plots, shared across
+     * protocol versions: 0 = preprobe, k = train_k, N+1 = probe; the extra
+     * tests sit between the bouts they follow and precede (sham_preprobe −1,
+     * probe_mid / sham_probe at k + 0.5 after bout k).
      */
     function sbdBouts(run) {
         const zone = sbdZone(run);
@@ -1493,6 +1537,7 @@
                 const startMs = interval.startMs;
                 const endMs = Number.isFinite(interval.endMs) ? interval.endMs : step.endMs;
                 const heat = sbdHeatSpan(interval.ledActivation);
+                const heatOff = sbdIsHeatOff(stage);
                 let samples = 0;
                 let safe = 0;
                 let opposite = 0;
@@ -1508,9 +1553,15 @@
                             firstEntrySec = (frame.ms - startMs) / 1000;
                     }
                     if (zone.isOpposite(frame.index)) opposite += 1;
-                    if (!heat || sbdInSpan(heat, frame.index)) led += 1;
+                    if (!heatOff && (!heat || sbdInSpan(heat, frame.index))) led += 1;
                 }
                 const bout = stage === 'training' ? (trainingNo += 1) : null;
+                let position = NaN; // probe: N + 1, set below once N is known
+                if (stage === 'training') position = bout;
+                else if (stage === 'preprobe') position = 0;
+                else if (stage === 'sham_preprobe') position = -1;
+                else if (stage === 'probe_mid' || stage === 'sham_probe')
+                    position = trainingNo + 0.5;
                 const startFrame = finite(interval.params.initPos);
                 const patternId = finite(interval.params.patternId);
                 const scored = safe + opposite;
@@ -1533,14 +1584,15 @@
                     rotationK: Object.prototype.hasOwnProperty.call(SBD_PATTERN_ROTATION, patternId)
                         ? SBD_PATTERN_ROTATION[patternId]
                         : null,
-                    uniformHeat: !heat,
+                    uniformHeat: !heat && !heatOff,
+                    heatOff,
                     samples,
                     safeFraction: samples ? safe / samples : NaN,
                     oppositeFraction: samples ? opposite / samples : NaN,
                     ledOnFraction: samples ? led / samples : NaN,
                     firstEntrySec,
                     preference: scored ? (safe - opposite) / scored : NaN,
-                    position: stage === 'preprobe' ? 0 : stage === 'training' ? bout : NaN
+                    position
                 });
             }
         }
@@ -1548,7 +1600,12 @@
         return { zone, bouts, trainingBouts: trainingNo };
     }
 
-    /** Time-weighted stage totals (preprobe / training / probe) over a run's bouts. */
+    /**
+     * Time-weighted stage totals over a run's bouts: one entry per SBD stage
+     * (sham_preprobe / preprobe / training / probe_mid / sham_probe / probe,
+     * zero bouts for a stage the protocol does not run) plus `stages`, the
+     * stages present in protocol order.
+     */
     function sbdStageSummary(run) {
         const { zone, bouts, trainingBouts } = sbdBouts(run);
         const stage = (name) => {
@@ -1567,6 +1624,8 @@
             const scored = safe + opposite;
             return {
                 stage: name,
+                shortLabel: SBD_STAGE_SHORT[name],
+                heatOff: sbdIsHeatOff(name),
                 bouts: rows.length,
                 samples,
                 safeFraction: samples ? safe / samples : NaN,
@@ -1574,13 +1633,9 @@
                 preference: scored ? (safe - opposite) / scored : NaN
             };
         };
-        return {
-            zone,
-            trainingBouts,
-            preprobe: stage('preprobe'),
-            training: stage('training'),
-            probe: stage('probe')
-        };
+        const summary = { zone, trainingBouts, stages: sbdStagesPresent([bouts]) };
+        for (const name of SBD_STAGES) summary[name] = stage(name);
+        return summary;
     }
 
     /** Occupancy histogram (percent per bin) of the bouts of one stage, in degrees from the zone centre. */
@@ -1647,7 +1702,13 @@
         SBD_FRAME_COUNT,
         SBD_DEFAULT_HEAT,
         SBD_PATTERN_ROTATION,
+        SBD_STAGES,
+        SBD_TEST_STAGES,
+        SBD_SHAM_STAGES,
+        SBD_STAGE_SHORT,
         sbdStage,
+        sbdIsHeatOff,
+        sbdStagesPresent,
         sbdHeatSpan,
         sbdZone,
         sbdBouts,
