@@ -52,7 +52,7 @@ const ArenaWireG6 = (function () {
         RESET_FRAMES_SENT: 0x34, // zeroes the frames-sent counter
         GET_FILE_COUNT: 0x80, // returns pattern file count on SD as uint16 LE
         GET_PATTERN_FILENAME: 0x82, // [03 82 idx_lo idx_hi] 1-based; returns 1-byte-len + filename
-        GET_PATTERN_INFO: 0x88, // [03 88 idx_lo idx_hi] 1-based; framed reply: header metadata + frame-0 stretch (cheap preview)
+        GET_PATTERN_INFO: 0x88, // [03 88 idx_lo idx_hi] 1-based; framed reply: header metadata + frame-0 duty cycle (cheap preview)
         SET_PATTERN_FILENAME: 0x83, // [0x83, idx_lo, idx_hi, len, chars…] rename; returns new uint16 LE index
         GET_PATTERN_FILE: 0x84, // [03 84 idx_lo idx_hi] 1-based; response: uint64 LE size, then raw bytes
         SET_PATTERN_FILE: 0x85, // [0x85, idx_lo, idx_hi, len64 LE, data…] upload file (bulk stream)
@@ -74,7 +74,7 @@ const ArenaWireG6 = (function () {
         SET_TELEMETRY: 0xa8, // [04 A8 flags rate_lo rate_hi] telemetry ring: bit0 events on/off (fw feat/telemetry-ring)
         GET_TELEMETRY_BLOCK: 0xa9, // [08 A9 ack_seq u32 max_bytes u16 flags] ack-cursor drain of the ring (js/arena-telemetry.js decodes)
         SET_AO_VOLTAGE: 0xa0, // [03 A0 mv_lo mv_hi] set analog output (BNC J27) 0–5000 mV
-        GET_AO_VOLTAGE: 0xa1, // [01 A1] returns last commanded AO level as uint16 LE mV
+        GET_AO_VOLTAGE: 0xa1, // [01 A1] DAC register readback (quantized to the 12-bit DAC) as uint16 LE mV; status 1 "I2C read failed" if the DAC does not answer
         SET_AO_MODE: 0xa3, // [02 A3 mode] 0=programmable | 1=frame_number (io_ext fw)
         GET_ANALOG_IN: 0xa4, // [01 A4] returns Analog In 1+2 as two int16 LE mV (io_ext fw)
         SET_DIGITAL_OUT: 0xaa, // [03 AA ch state] DO1 (ch=1, J3/D37) or DO2 (ch=2, J4/D35)
@@ -436,11 +436,11 @@ const ArenaWireG6 = (function () {
     }
 
     function encodeGetIp() {
-        return frame(OPCODES.GET_ETHERNET_IP); // 01 C0
+        return frame(OPCODES.GET_ETHERNET_IP); // 01 C1
     }
 
     function encodeGetControllerInfo() {
-        return frame(OPCODES.GET_CONTROLLER_INFO); // 01 C1
+        return frame(OPCODES.GET_CONTROLLER_INFO); // 01 C2
     }
 
     // get-file-count (0x80) — number of *.pat files in /patterns on the SD card.
@@ -558,7 +558,7 @@ const ArenaWireG6 = (function () {
 
     // get-pattern-info (0x88) — cheap header metadata for the 1-based pattern:
     // frame count, grayscale, geometry, arena/observer id, file size, and the
-    // first frame's panel-0 stretch. A small framed reply (NOT the 0x84 bulk
+    // first frame's panel-0 duty cycle. A small framed reply (NOT the 0x84 bulk
     // path), so it sidesteps the bulk-download stall and needs no ALL_OFF.
     function encodeGetPatternInfo(index) {
         requireInt(index, 'index');
@@ -612,7 +612,9 @@ const ArenaWireG6 = (function () {
         return frame(OPCODES.SET_AO_VOLTAGE, u16le(mv, 'mv')); // 03 A0 lo hi
     }
 
-    // get-ao-voltage (0xA1) — read back the last commanded AO level (mV, uint16 LE).
+    // get-ao-voltage (0xA1) — read the AO level back from the DAC register (mV, uint16 LE).
+    // It is the DAC's own value, quantized to 12 bits, not an echo of the last command;
+    // the firmware answers status 1 "I2C read failed" when the DAC does not respond.
     function encodeGetAoVoltage() {
         return frame(OPCODES.GET_AO_VOLTAGE); // 01 A1
     }
@@ -1025,7 +1027,8 @@ const ArenaWireG6 = (function () {
     // arm_fault_info_struct {len, ipsr, cfsr, hfsr, mmfar, bfar, ret_addr, xpsr,
     // temp f32, time, crc} (44 B) written by the core's fault handler, then PJRC's
     // own breadcrumb words at +0x40. Never cleared by the read. Gate on the 0xCB
-    // telemetry flag (bit 2) like 0xA8/0xA9 — older firmware glyphs on it.
+    // crash-report flag (bit 3, `decodeFirmwareVersion().crashReport`), NOT the
+    // telemetry bit — older firmware glyphs on it.
     function encodeGetCrashReport() {
         return frame(OPCODES.GET_CRASHREPORT); // 01 CC
     }
@@ -1262,11 +1265,12 @@ const ArenaWireG6 = (function () {
     }
     // ack_seq: highest record seq the host has safely stored (freed on the
     // controller); 0xFFFFFFFF = no ack. max_bytes: cap on returned record bytes
-    // (the firmware also caps at ~180 so the reply stays one framed message).
+    // (the firmware clamps to 178 so the reply stays one framed message).
     const TELEMETRY_NO_ACK = 0xffffffff;
+    const TELEMETRY_MAX_RECORD_BYTES = 178; // fw kRecordBytesMax (196 B payload − 18 B header)
     function encodeGetTelemetryBlock(ackSeq, maxBytes, flags) {
         const a = ackSeq == null ? TELEMETRY_NO_ACK : ackSeq >>> 0;
-        const m = maxBytes == null ? 180 : maxBytes;
+        const m = maxBytes == null ? TELEMETRY_MAX_RECORD_BYTES : maxBytes;
         requireInt(m, 'maxBytes');
         if (m < 0 || m > 0xffff) throw new RangeError('maxBytes out of range: ' + m);
         return frame(
@@ -1313,7 +1317,8 @@ const ArenaWireG6 = (function () {
 
     // get-pattern-info (0x88) reply: 12-byte little-endian payload
     //   frame_count u16 · gs u8 · rows u8 · cols u8 · arena u8 · observer u8
-    //   · file_size u32 · stretch u8
+    //   · file_size u32 · duty_cycle u8 (firmware name; the .pat tools call this
+    //     per-frame byte "stretch" — `stretch` stays as an alias for old callers)
     // Returns a structured object, or null on error / short payload.
     function decodePatternInfo(resp) {
         const r = asResponse(resp);
@@ -1327,6 +1332,7 @@ const ArenaWireG6 = (function () {
             arenaId: p[5],
             observerId: p[6],
             fileSize: (p[7] | (p[8] << 8) | (p[9] << 16) | (p[10] << 24)) >>> 0,
+            dutyCycle: p[11],
             stretch: p[11]
         };
     }
