@@ -688,7 +688,7 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   boot's ISR (`prevIsrLastName`), watchdog-captured PC/LR (`prevWdogPcHex`, valid when
   `prevPcCaptured`), `wdogFlags` (armed / prev reset was watchdog / suspended / starving / config
   failed). `GET_CRASHREPORT` 0xCC (128 B raw PJRC record, `decodeCrashReport().present`) is gated
-  like 0xA8 on the 0xCB telemetry flag; `Studio.readCrashReport()` logs a `crash_report` event.
+  on its OWN 0xCB flag (bit 3, `crashReport`), not the telemetry bit; `Studio.readCrashReport()` logs a `crash_report` event.
   Breadcrumb ops 6–9 are the SET_FRAME_POSITION sub-steps (disarm timer / preload / arm / respond).
 
 - **Qwiic peripherals (LAB-214):** the controller exposes only a sensor-agnostic I2C bridge
