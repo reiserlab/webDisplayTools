@@ -3952,7 +3952,7 @@
                     ['arena id', String(info.arenaId)],
                     ['observer id', String(info.observerId)],
                     ['file size', (info.fileSize / 1024).toFixed(1) + ' KB'],
-                    ['stretch', String(info.stretch)]
+                    ['duty cycle', String(info.dutyCycle ?? info.stretch)]
                 ];
                 for (const [k, v] of rows) {
                     const tr = document.createElement('tr');

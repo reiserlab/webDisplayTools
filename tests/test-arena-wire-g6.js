@@ -547,7 +547,8 @@ check('  .cols', pi && pi.cols, 10);
 check('  .arenaId', pi && pi.arenaId, 5);
 check('  .observerId', pi && pi.observerId, 9);
 check('  .fileSize', pi && pi.fileSize, 91904);
-check('  .stretch', pi && pi.stretch, 0xab);
+check('  .dutyCycle', pi && pi.dutyCycle, 0xab);
+check('  .stretch (alias)', pi && pi.stretch, 0xab);
 checkBool(
     'decodePatternInfo rejects status!=0',
     Wire.decodePatternInfo(

@@ -265,7 +265,7 @@
      * Ack-cursor drainer. `session.send(bytes, {timeoutMs})` returns the reply
      * frame. State: `ackSeq` = last seq stored by the host (sent as the ack on
      * the next request), stats for the UI/log.
-     * @param {object} d {session, wire, timeoutMs=1500, maxBytes=180, maxChunks=40, now,
+     * @param {object} d {session, wire, timeoutMs=1500, maxBytes=178, maxChunks=40, now,
      *        onRecords(block, rows, rx) → return false to REFUSE the rows (not stored):
      *        the drainer then withholds its ack so the controller keeps them.}
      */
@@ -273,8 +273,8 @@
         const session = d.session;
         const W = d.wire || (typeof global !== 'undefined' ? global.ArenaWireG6 : null);
         const timeoutMs = d.timeoutMs || 1500;
-        const maxBytes = d.maxBytes || 180;
-        // Per-poll budget = maxChunks × ~178 B. Under Chrome's background-tab timer
+        const maxBytes = d.maxBytes || 178; // the firmware's record budget per block
+        // Per-poll budget = maxChunks × 178 B. Under Chrome's background-tab timer
         // throttling a poll may run only once per second, and Mode-3 production at
         // 200–286 Hz with 26 B FRAME records is ~6.5–10 KB/s (Codex review,
         // 2026-09-13): 40 chunks (7 KB) could not keep up and would silently lose

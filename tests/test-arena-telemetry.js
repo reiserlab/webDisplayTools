@@ -79,6 +79,11 @@ function block(h, records) {
         [8, 0xa9, 0xff, 0xff, 0xff, 0xff, 180, 0, 0]
     );
     check(
+        'encodeGetTelemetryBlock default max_bytes = 178 (the firmware record budget)',
+        Array.from(Wire.encodeGetTelemetryBlock(null)),
+        [8, 0xa9, 0xff, 0xff, 0xff, 0xff, 178, 0, 0]
+    );
+    check(
         'encodeGetTelemetryBlock(ack 0x01020304, 64, flags 1)',
         Array.from(Wire.encodeGetTelemetryBlock(0x01020304, 64, 1)),
         [8, 0xa9, 4, 3, 2, 1, 64, 0, 1]

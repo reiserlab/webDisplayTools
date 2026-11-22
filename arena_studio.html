@@ -7203,7 +7203,7 @@ function studioMarkerCurrent(stored, current) {
         const gsLabel = info ? (info.gsVal === 1 ? 'GS2' : info.gsVal === 2 ? 'GS16' : 'GS?') : '';
         el.textContent = info
             ? info.frameCount + ' fr · ' + gsLabel + ' · ' + info.cols + '×' + info.rows +
-              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · duty cycle ' + info.stretch
+              ' panels · ' + (info.fileSize / 1024).toFixed(1) + ' KB · duty cycle ' + (info.dutyCycle ?? info.stretch)
             : 'no reply for pat idx ' + idx;
     }
     Studio.refreshPatternInfo = () => refreshPatInfo(true); // module block: on dropdown pick
