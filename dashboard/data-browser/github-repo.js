@@ -7,7 +7,10 @@
     const REPO_KEY = 'studio_gh_repo';
     const BENCH_KEY = 'studio_bench_id';
     const FOLDERS_KEY_PREFIX = 'dashboard_runlog_folders:';
-    const DEFAULT_REPO = 'reiserlab/cshl-2026-course';
+    // The lab's private data repo (LAB-227) — same default as Arena Studio and the
+    // Pattern Designer; the 2026 course's logs stay in reiserlab/cshl-2026-course
+    // (type it into the repo field). tests/test-studio-shell.js pins the three equal.
+    const DEFAULT_REPO = 'reiserlab/arena-experiments';
     // Run logs are committed as `.jsonl.gz` since Studio v0.72; fetchRaw reads
     // BYTES and lets the shared format module inflate (magic-detected, so a raw
     // `.jsonl` still works). Vendored byte-identical copy of js/runlog-format.js.

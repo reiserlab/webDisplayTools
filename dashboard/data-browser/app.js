@@ -289,7 +289,7 @@ function updateGithubUi(user) {
         const repo = G.parseRepo(els.githubRepoInput.value);
         els.courseRepoLink.href = `https://github.com/${repo.full}`;
     } catch (_) {
-        els.courseRepoLink.href = 'https://github.com/reiserlab/cshl-2026-course';
+        els.courseRepoLink.href = `https://github.com/${G.DEFAULT_REPO}`;
     }
 }
 
@@ -951,7 +951,7 @@ async function browseGithub() {
 
 function normalizeDirectoryUrl(value) {
     const url = new URL(
-        A.safeText(value).trim() || '/cshl-2026-course/runlogs/',
+        A.safeText(value).trim() || '/arena-experiments/runlogs/',
         window.location.href
     );
     if (!url.pathname.endsWith('/')) url.pathname += '/';

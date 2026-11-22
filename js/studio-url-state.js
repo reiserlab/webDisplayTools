@@ -240,8 +240,9 @@
      * is bench identity, NOT doc state — emitted whenever present (the caller
      * only passes an explicit selection), regardless of doc locality. `repo`
      * is emitted ONLY alongside a valid repo-path `p` (a repo ref without a
-     * document to point at is bench localStorage config, not URL state).
-     * @param {object} state {mode, p, lib, set, rig, repo, source?: 'local'|'committed'}
+     * document to point at is bench localStorage config, not URL state) —
+     * except `sessionRepo`, the tab-scoped override a bare ?repo= link set.
+     * @param {object} state {mode, p, lib, set, rig, repo, sessionRepo, source?: 'local'|'committed'}
      */
     function encode(state) {
         const s = state || {};
@@ -261,6 +262,11 @@
         } else if (!local && isSafeKey(s.p)) {
             params.set('p', s.p);
         }
+        // sessionRepo: the tab-scoped repo override (a bare ?repo=, Studio.sessionRepo) —
+        // kept so a refresh keeps the tab on the requested repo; only when no repo-bound
+        // doc or replay already names the repo above.
+        if (!replayMode && !repoMode && isSafeRepo(s.sessionRepo))
+            params.set('repo', s.sessionRepo);
         if (!replayMode && isSafeKey(s.lib)) params.set('lib', s.lib);
         if (!replayMode && !local && isSafeKey(s.set)) params.set('set', s.set);
         if (isSafeKey(s.rig)) params.set('rig', s.rig);
@@ -293,7 +299,10 @@
      * `advanced` must be true ONLY when advanced mode is active AND was
      * URL-requested (the caller enforces this; a remembered-unlocked browser
      * passes false to keep a clean URL, mirroring the derived-rig rule).
-     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath, advanced}
+     * `sessionRepo` is the tab-scoped repo override (Studio.sessionRepo, from a
+     * bare ?repo= link): emitted as `repo` only when no repo-bound doc or replay
+     * owns the link.
+     * @param {object} app {mode, protocolKey, rigKey, repo, repoPath, sessionRepo, advanced}
      * @returns {string} query string (leading '?', or '' when all defaults)
      */
     function encodeApp(app) {
@@ -323,6 +332,7 @@
         return encode({
             mode: a.mode,
             p: a.protocolKey || undefined,
+            sessionRepo: a.sessionRepo || undefined,
             rig: a.rigKey || undefined,
             advanced: a.advanced || undefined,
             soak: a.soak || undefined,

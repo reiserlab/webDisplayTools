@@ -1,9 +1,13 @@
 # Data-repo tokens — renewal and setup runbook
 
 Arena Studio, the Pattern Designer and the data-browser dashboard write protocols,
-patterns and run logs to a GitHub **data repo** (the CSHL course repo today; the lab's
-`reiserlab/arena-experiments` next) using a personal access token pasted once per
-browser (⚙ Settings → GitHub → **Sign in…**). The token is stored in that browser only
+patterns and run logs to a GitHub **data repo** — the lab's private
+`reiserlab/arena-experiments` by default (LAB-227 Phase 4, 2026-11); the CSHL course
+benches and `rig03-sr` type `reiserlab/cshl-2026-course` into the Repo field instead —
+using a personal access token pasted once per browser (⚙ Settings → GitHub →
+**Sign in…**). A `?repo=owner/name` link overrides the stored repo for that tab only.
+The rig's folder name is its **Rig id** (⚙ Settings; the course benches use
+`bench01`…`bench07`). The token is stored in that browser only
 (`studio_gh_pat`, sessionStorage or localStorage) and sent only as an
 `Authorization` header. This page is the operational how-to; design background is in
 `studio-github-save-proposal.md`, the course-week checklist in
@@ -38,9 +42,10 @@ the stored token; a save or run-log commit made with a dead token falls back to
    `ghp_…` value once; store it in the lab password manager.
 4. On each bench browser (served from `http://127.0.0.1:8000/`, not `file://`):
    ⚙ Settings → **Sign in…** → paste → **YES** to "Remember this token" → 🛡 advanced
-   (instructor password) → 🔓 in the GitHub block → **Repo** `reiserlab/cshl-2026-course`,
-   **Bench id** `bench01`…`bench07` (must match `roster.yaml`), tick **Commit
-   directly to default branch** → 🔒. Connect the arena; the roster pre-fills the
+   (instructor password) → 🔓 in the GitHub block → **Repo** `reiserlab/cshl-2026-course`
+   (the field is pre-filled with the lab repo — overwrite it), **Rig id**
+   `bench01`…`bench07` (must match `roster.yaml`), tick **Commit directly to default
+   branch** → 🔒. Connect the arena; the roster pre-fills the
    experimenter.
 5. Check: the run log shows `ages list from the course repo (… 5 entries)` and no
    "unreadable" lines; a test save lands in `protocols/<bench-id>/`.
@@ -63,8 +68,10 @@ the stored token; a save or run-log commit made with a dead token falls back to
 6. In the Studio: ⚙ Settings → **Sign in…** → paste. Answer **YES** to "Remember" only on a
    rig computer you control or your own laptop; answer **NO** (session-only) on a
    shared or borrowed machine. **Sign out** clears the token everywhere.
-7. Set **Repo** and your **Rig id** once (🔓 needed); saves go to `protocols/<rig-id>/`,
-   run logs to `runlogs/<rig-id>/`, and your commits carry your GitHub identity.
+7. Set your **Rig id** once (🔓 needed; **Repo** is already `reiserlab/arena-experiments`);
+   saves go to `protocols/<rig-id>/`, run logs to `runlogs/<rig-id>/`, and your commits
+   carry your GitHub identity. A rig may keep its own genotype / age / sex / fly-number
+   lists at `protocols/<rig-id>/<file>.yaml`; the Studio reads those before the root files.
 
 Sharing across the lab needs no extra permission: everyone with a token sees every
 rig's folder, **Protocol ▾ → Promote to shared…** copies a protocol and its patterns into

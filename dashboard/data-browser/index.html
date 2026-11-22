@@ -21,7 +21,7 @@
       <h1>Course Data Dashboard</h1>
     </div>
     <div class="header-actions">
-      <a id="courseRepoLink" class="quiet-link" href="https://github.com/reiserlab/cshl-2026-course" target="_blank" rel="noreferrer">Course repo</a>
+      <a id="courseRepoLink" class="quiet-link" href="https://github.com/reiserlab/arena-experiments" target="_blank" rel="noreferrer">Data repo</a>
       <div class="status-strip" id="statusStrip" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="statusText">No data loaded</span>
@@ -50,7 +50,7 @@
         </div>
 
         <div class="github-controls">
-          <input id="githubRepoInput" type="text" value="reiserlab/cshl-2026-course" aria-label="GitHub repository">
+          <input id="githubRepoInput" type="text" value="reiserlab/arena-experiments" aria-label="GitHub repository" title="GitHub data repo (owner/name) — the lab's reiserlab/arena-experiments by default; type reiserlab/cshl-2026-course for the 2026 course logs">
           <button id="githubSignInButton" type="button">Sign in</button>
           <button id="githubSignOutButton" type="button" disabled>Sign out</button>
           <button id="chooseRigsButton" type="button" title="Choose which rig folders are included in the data catalog" disabled>Select rigs</button>
@@ -60,7 +60,7 @@
         <details class="local-source">
           <summary>Local server repository</summary>
           <div class="inline-control">
-            <input id="repoBaseInput" type="text" value="/cshl-2026-course/runlogs/" aria-label="Local runlog repository path">
+            <input id="repoBaseInput" type="text" value="/arena-experiments/runlogs/" aria-label="Local runlog repository path">
             <button id="scanLocalButton" type="button">Scan local</button>
           </div>
         </details>

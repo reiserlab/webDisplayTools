@@ -1246,7 +1246,18 @@
                 setProtoLine('Downloading ' + name + ' from ' + repo.full + '…');
                 const bytes = await readRepoBytes(repo, path);
                 if (token !== R.loadToken) return false;
-                if (!bytes) throw new Error(path + ' was not found in ' + repo.full + '.');
+                // Signed out, GitHub answers 404 for a private repo exactly as for a
+                // missing file — say so (the lab's default data repo is private).
+                if (!bytes) {
+                    throw new Error(
+                        path +
+                            ' was not found in ' +
+                            repo.full +
+                            (ghToken()
+                                ? '.'
+                                : ' (HTTP 404) — sign in if this repository is private.')
+                    );
+                }
                 const text = Fmt
                     ? await Fmt.readRunlogText(bytes)
                     : new TextDecoder().decode(bytes);
@@ -2111,7 +2122,11 @@
                     if (!hit) {
                         if (Studio.showBanner)
                             Studio.showBanner(
-                                'Replay: run ' + s.runId + ' was not found in ' + repo.full + '.'
+                                'Replay: run ' +
+                                    s.runId +
+                                    ' was not found in ' +
+                                    repo.full +
+                                    (ghToken() ? '.' : ' — sign in if this repository is private.')
                             );
                         return false;
                     }

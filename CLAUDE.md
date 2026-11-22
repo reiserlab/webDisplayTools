@@ -498,6 +498,15 @@ fix flows to every page automatically; two hand-written HTML pages never will.
   `Studio._urlSuppress`. URL writing is NOT a protocol mutation — never route
   it through `pushUndo`. Any NEW shareable state must flow through
   `encodeApp()` + `Studio.updateUrl` (never hand-build `location.search`).
+  **`?repo=` alone is a tab-scoped repo override** (LAB-227 Phase 4): `Studio.sessionRepo`
+  is parsed in the classic shell and `courseSettings()` returns it ahead of the stored
+  `studio_gh_repo` and the default (`Studio.DEFAULT_COURSE_REPO` = the private
+  `reiserlab/arena-experiments`; the Pattern Designer's `DEFAULT_DATA_REPO` and the
+  dashboard's `DEFAULT_REPO` carry the same string, pinned by `tests/test-studio-shell.js`).
+  Every repo consumer reads `courseSettings().repo` — never `localStorage` directly — so the
+  override wins for previews, Open from Repo, vocab, replay AND saves; it is never written to
+  storage, `encodeApp({sessionRepo})` keeps it across the canonical rewrite, and typing a
+  repo in ⚙ Settings ends it.
 - **Top bar: Protocol ▾ vs ⚙ Settings.** `Protocol ▾` (`#fileMenu`, renamed from File)
   holds protocol ACTIONS only (new/open/replay/save/promote/copy/reset/soak). `⚙ Settings`
   (`#settingsMenu`) holds the Studio/bench settings kept in the browser, not the YAML: the
