@@ -47,6 +47,14 @@ pixi run rig -- --sim --bias --bias-sim    # demo with no hardware: FicTrac sim 
 pixi run test             # the acceptance run (≈ 60 s, no hardware, see below)
 ```
 
+**Remote control (LAB-357):** a program can start runs in an Arena Studio that is in
+remote-control mode (Run view → Remote control, or `?remote=1`). The request is a ROS message:
+publish JSON on `/arena/run_request`, read `/arena/run_status` (any ROS node can; the same object
+also works on the gateway's WebSocket). `pixi run remote -- run protocol.yaml [--experiment] [--json]`,
+`-- stop`, `-- status` (`--ws` for the WebSocket), or `StudioRemote` in `nodes/studio_remote.py`
+(also from MATLAB). The Studio still executes the steps; the gateway relays requests and
+statuses (`nodes/remote_relay.py`). Gateway test: `pixi run test-remote`. Reference: [`docs/development/studio-remote-control.md`](../docs/development/studio-remote-control.md).
+
 The ROS distribution is one switch (2026-11-05): `[feature.jazzy]` / `[feature.lyrical]` in
 `pixi.toml` carry the RoboStack channel, the mutex pin, the Python pin and the Zenoh config paths;
 `default` / `typed` / `viz` / `dev` are Jazzy and resolve to the same packages as before. What the

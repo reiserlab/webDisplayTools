@@ -20,6 +20,9 @@
  *                    (`level` = the level the bridge will ACTUALLY write; an unknown
  *                     requested level is ignored by the bridge, so this is how a
  *                     stale bridge becomes visible instead of silently logging v1)
+ *                 {"type":"remote_attach_ack","ok":..,"on":..,"error"?:..}   (rig gateway only)
+ *                 {"type":"run_request","id":..,"action":"run"|"stop",…}     (remote-control
+ *                    mode, LAB-357: a controller program asks this page to run a protocol)
  *   us → bridge:  {"type":"hello","client":...,"v":1}
  *                 {"type":"config","fictrac_port":..,"gain":..,"offset":..,"frames":..}
  *                 {"type":"log_control","enabled":<bool>,
@@ -27,6 +30,9 @@
  *                     (opens/closes the log file; level picks the frame-row format)
  *                 {"type":"log", ...}                        (an event to append)
  *                 {"type":"log_export"}                      (close + stream back the log)
+ *                 {"type":"remote_attach","on":<bool>}       (become / stop being the page
+ *                    that executes remote run requests; needs hello_ack `remote: true`)
+ *                 {"type":"run_status","id":..,"state":..,…} (progress + result of a remote run)
  *
  * APPLY vs LOGGING are INDEPENDENT (per the open-loop requirement):
  *   - apply   = drive the arena (stream SET_FRAME_POSITION via applyFrame). Off ⇒
@@ -72,6 +78,13 @@
  *                                            reason, wasClean, apply (was it on), logging,
  *                                            logFile, recv, t}. ArenaSession routes it to
  *                                            the runner (ArenaRunner.onBridgeLost).
+ *   'run_request' (msg:object)             — a remote controller's run_request, relayed by the
+ *                                            gateway (only while this page is attached). The
+ *                                            client does NOT act on it: the Studio's remote-
+ *                                            control glue decides (js/studio-remote-control.js).
+ *   'remote_attach' (info:object)          — the attach state changed: {ok, on, error, auto,
+ *                                            reason}. `auto` = a re-attach after a reconnect;
+ *                                            a loss reports {ok:false, on:false, reason:'bridge lost'}.
  */
 (function (global) {
     'use strict';
@@ -88,7 +101,9 @@
         'log',
         'loglevel',
         'fault',
-        'lost'
+        'lost',
+        'run_request',
+        'remote_attach'
     ];
     // Log levels this client knows how to request, most-preferred first. The
     // bridge advertises ITS list in hello_ack; a level missing there is one the
@@ -189,6 +204,11 @@
             this._cmdWaiters = new Map(); // connectorCommand() id → {resolve, timer, base}
             this._cmdSeq = 0;
             this._lastLoss = null; // the most recent 'lost' info (null = never lost)
+            // Remote-control mode (LAB-357). `_remoteWanted` survives a reconnect (the client
+            // re-attaches on the next hello_ack); `_remoteAttached` is the gateway's last word.
+            this._remoteWanted = false;
+            this._remoteAttached = false;
+            this._attachWaiter = null; // single in-flight remote_attach {resolve, timer, on, auto}
         }
 
         // ---- events ----------------------------------------------------------
@@ -215,7 +235,7 @@
 
         // ---- state -----------------------------------------------------------
         get connected() {
-            return !!(this._ws && this._ws.readyState === 1 /* OPEN */);
+            return !!((this._ws && this._ws.readyState === 1) /* OPEN */);
         }
         /**
          * True while a frame index is coalesced and ABOUT TO BE SENT — apply is on,
@@ -349,6 +369,8 @@
                 else if (msg && msg.type === 'hello_ack') this._handleHelloAck(msg);
                 else if (msg && msg.type === 'log_control_ack') this._handleLogControlAck(msg);
                 else if (msg && msg.type === 'connector_reply') this._handleConnectorReply(msg);
+                else if (msg && msg.type === 'remote_attach_ack') this._handleRemoteAttachAck(msg);
+                else if (msg && msg.type === 'run_request') this._emit('run_request', msg);
             };
             ws.onerror = () => this._emit('status', 'error', 'err');
             ws.onclose = (ev) => {
@@ -373,7 +395,19 @@
                 this._bridgeInfo = null;
                 this._ackedLevel = null;
                 this._logFile = null;
+                // The gateway forgets an executor whose socket closed: this page is no longer
+                // attached, whatever it wants (a reconnect re-attaches — _handleHelloAck).
+                const wasAttached = this._remoteAttached;
+                this._remoteAttached = false;
                 this._failPending(lost ? 'bridge lost' : 'bridge disconnected');
+                if (wasAttached)
+                    this._emit('remote_attach', {
+                        ok: false,
+                        on: false,
+                        error: null,
+                        auto: false,
+                        reason: lost ? 'bridge lost' : 'bridge disconnected'
+                    });
                 this._emit('status', lost ? 'disconnected (bridge lost)' : 'disconnected', 'dim');
                 this._emit('stats', this.stats);
                 if (lost) {
@@ -433,6 +467,8 @@
             this._settleAckWaiters(null);
             // connector_command waiters (LAB-303 connectors): the device may have acted — 'unknown'.
             this._settleCmdWaiters(reason);
+            // remote_attach waiter (LAB-357): not attached — a dead socket never acks.
+            this._settleAttach({ ok: false, on: false, error: reason });
             this._settleExport(
                 'reject',
                 new Error(
@@ -767,6 +803,129 @@
                 );
             }
         }
+        // ---- remote-control mode (LAB-357) ------------------------------------
+        /**
+         * Does the connected bridge relay remote run requests (hello_ack `remote: true` —
+         * the rig gateway, rig/nodes/bridge_node.py)? true/false from hello_ack; null when
+         * unknown (no hello_ack yet — including every pre-3.0 bridge). Bridge 3.4 answers
+         * hello without the field → false: the Studio must refuse remote-control mode there.
+         */
+        supportsRemote() {
+            if (!this._bridgeInfo) return null;
+            return this._bridgeInfo.remote === true;
+        }
+        /** True while the gateway has this page registered as the executor. */
+        get remoteAttached() {
+            return this._remoteAttached && this.connected;
+        }
+        /** True while this client wants to be the executor (re-attaches after a reconnect). */
+        get remoteWanted() {
+            return this._remoteWanted;
+        }
+        /**
+         * Become (on=true) or stop being (on=false) the page that executes remote run
+         * requests: sends remote_attach, resolves with the gateway's remote_attach_ack
+         * {ok, on, error}. NEVER rejects: not connected, a bridge without remote support, no
+         * ack within `timeoutMs` (3 s) and a bridge loss while waiting all resolve
+         * {ok:false, on:false, error}. While attached-or-wanted, the client re-attaches by
+         * itself on the hello_ack of every reconnect; on=false ends that.
+         * @param {boolean} on
+         * @param {number} [timeoutMs]
+         * @returns {Promise<{ok:boolean, on:boolean, error:string|null}>}
+         */
+        remoteAttach(on, timeoutMs) {
+            const want = !!on;
+            if (!want) {
+                // Leaving always succeeds locally: stop wanting it first, so a reconnect
+                // can never re-attach a page whose operator has taken it back.
+                this._remoteWanted = false;
+                if (!this.connected) {
+                    this._remoteAttached = false;
+                    this._settleAttach({ ok: false, on: false, error: 'superseded' });
+                    return Promise.resolve({ ok: true, on: false, error: null });
+                }
+            } else {
+                if (!this.connected)
+                    return Promise.resolve({ ok: false, on: false, error: 'bridge not connected' });
+                if (this.supportsRemote() !== true)
+                    return Promise.resolve({
+                        ok: false,
+                        on: false,
+                        error:
+                            this.supportsRemote() === false
+                                ? 'this bridge does not support remote control (it needs the rig gateway: cd rig && pixi run rig)'
+                                : 'the bridge has not answered hello yet'
+                    });
+                this._remoteWanted = true;
+            }
+            return this._sendAttach(want, false, timeoutMs);
+        }
+        _sendAttach(on, auto, timeoutMs) {
+            // One remote_attach in flight: a newer request supersedes the older waiter.
+            this._settleAttach({ ok: false, on: false, error: 'superseded' });
+            if (!this._send({ type: 'remote_attach', on: on })) {
+                if (!on) this._remoteAttached = false;
+                return Promise.resolve({
+                    ok: !on,
+                    on: false,
+                    error: on ? 'send failed (socket closing)' : null
+                });
+            }
+            const ms = Number(timeoutMs) > 0 ? Number(timeoutMs) : 3000;
+            return new Promise((resolve) => {
+                const w = { resolve, timer: null, on, auto };
+                w.timer = setTimeout(() => {
+                    if (this._attachWaiter !== w) return;
+                    this._attachWaiter = null;
+                    if (!on) this._remoteAttached = false; // we stopped wanting it either way
+                    const res = {
+                        ok: false,
+                        on: false,
+                        error: 'no remote_attach_ack within ' + ms + ' ms'
+                    };
+                    resolve(res);
+                    this._emit('remote_attach', Object.assign({ auto, reason: 'timeout' }, res));
+                }, ms);
+                this._attachWaiter = w;
+            });
+        }
+        _settleAttach(result) {
+            const w = this._attachWaiter;
+            if (!w) return;
+            this._attachWaiter = null;
+            if (w.timer && typeof clearTimeout !== 'undefined') clearTimeout(w.timer);
+            w.resolve(result);
+        }
+        _handleRemoteAttachAck(msg) {
+            const res = {
+                ok: !!msg.ok,
+                on: !!msg.on,
+                error: typeof msg.error === 'string' && msg.error ? msg.error : null
+            };
+            const w = this._attachWaiter;
+            // The gateway's word is the state: attached only on an ok ack for on:true.
+            this._remoteAttached = res.ok && res.on;
+            this._settleAttach(res);
+            this._emit(
+                'remote_attach',
+                Object.assign(
+                    { auto: !!(w && w.auto), reason: w && w.auto ? 'reconnect' : null },
+                    res
+                )
+            );
+        }
+        /**
+         * Send one run_status (remote-control mode): {id, state, detail?, step?, summary?}.
+         * Returns false when it could not be sent (not connected / socket closing) — the
+         * gateway then tells the controller "Studio disconnected" itself.
+         * @param {object} obj
+         * @returns {boolean} sent
+         */
+        sendRunStatus(obj) {
+            if (!obj || typeof obj !== 'object' || !obj.id || !obj.state) return false;
+            return this._send(Object.assign({}, obj, { type: 'run_status' }));
+        }
+
         /**
          * Resolve with the acked level once the bridge answers the pending
          * log_control (or immediately if it already has); null after `timeoutMs`
@@ -799,8 +958,23 @@
                 level: msg.level || null,
                 // Device connectors the bridge drives for the runner (LAB-303); null = a
                 // bridge that predates connectors (every ≤ 3.4 bridge).
-                connectors: Array.isArray(msg.connectors) ? msg.connectors.slice() : null
+                connectors: Array.isArray(msg.connectors) ? msg.connectors.slice() : null,
+                // Remote-control relay (LAB-357): only the rig gateway says `remote: true`.
+                remote: msg.remote === true
             };
+            // A reconnect while remote-control mode is on: attach again (the gateway forgot
+            // this page when the old socket closed). A bridge without the relay cannot.
+            if (this._remoteWanted) {
+                if (this._bridgeInfo.remote) this._sendAttach(true, true);
+                else
+                    this._emit('remote_attach', {
+                        ok: false,
+                        on: false,
+                        auto: true,
+                        reason: 'reconnect',
+                        error: 'this bridge does not support remote control (it needs the rig gateway: cd rig && pixi run rig)'
+                    });
+            }
             const requested = this._config.logLevel;
             const ok = this._bridgeInfo.levels.includes(requested);
             if (!ok) {

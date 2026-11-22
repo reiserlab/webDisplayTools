@@ -262,6 +262,14 @@ soak = "python tests/soak_graph.py"
 # the gateway records + derives the 2P rig's topics (its SiPM / frame-stream nodes are private: scanimage-2026-bergamo 2p-rig-nodes/)
 test-gateway = "python tests/test_gateway_registration.py"
 studio-emulator = "python tests/studio_emulator.py"
+# ── remote-control mode (LAB-357; docs/development/studio-remote-control.md) ─────────
+# Start runs in an Arena Studio that is in remote-control mode, from a program or this command line:
+# `pixi run remote -- run protocol.yaml [--experiment --experimenter … --genotype …] [--json]`, `-- stop`, `-- status`.
+# Over ROS 2 by default (/arena/run_request → /arena/run_status); `--ws [URL]` uses the gateway's WebSocket.
+# Exit 0 only when the run ended `done`. Python API: nodes/studio_remote.py (StudioRemote), also for MATLAB.
+remote = "python nodes/studio_remote.py"
+# the gateway's relay against a real bridge node: fake Studio + controllers on both transports + the client (≈ 30 s; port 7447 free)
+test-remote = "python tests/test_remote_relay.py"
 # ── MCAP record + converter ──────────────────────────────────────────────────
 # bag → behavior_v2 NDJSON (also `-- --level behavior_v1|full`, `-- --order time`);
 # reads a crash-truncated bag too (`-- --recover`).

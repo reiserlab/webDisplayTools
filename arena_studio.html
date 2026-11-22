@@ -826,6 +826,33 @@
   .run-alert{background:color-mix(in srgb,var(--danger) 12%,transparent);border-color:var(--danger);color:var(--danger);font-weight:600;align-items:center;gap:12px}
   .run-alert.show{display:flex}
   .run-alert button{margin-left:auto;flex:0 0 auto;background:transparent;border:1px solid currentColor;color:inherit;border-radius:5px;padding:1px 8px;cursor:pointer;font:inherit}
+  /* ── REMOTE-CONTROL mode (LAB-357 · js/studio-remote-control.js) ─────────────────
+     An external program starts the runs; the page is display only (the display itself, the
+     bottom dock, stays usable). The banner is the first thing on the page and sits ABOVE
+     the locked page and every overlay, so its STOP is
+     always reachable; the confirm dialog is in-page (window.confirm would block the event
+     loop and stall a host-timed run). */
+  .remote-banner{flex:0 0 auto;position:relative;z-index:1100;display:flex;align-items:center;gap:14px;padding:9px 16px;background:color-mix(in srgb,var(--warn) 16%,var(--bg));border-bottom:2px solid var(--warn);color:var(--text)}
+  .remote-banner[hidden]{display:none}
+  .rmt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .rmt-text{font-family:var(--head);font-weight:700;font-size:17px;letter-spacing:.3px;color:var(--warn)}
+  .rmt-state{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rmt-acts{flex:0 0 auto;display:flex;align-items:center;gap:10px}
+  .rmt-stop{background:var(--danger);border:0;color:var(--on-danger);font-family:var(--head);font-weight:700;font-size:26px;letter-spacing:1px;border-radius:12px;padding:16px 56px}
+  .rmt-stop:hover{filter:brightness(1.1)}
+  .rmt-stop:disabled{opacity:.35;cursor:not-allowed;filter:none}
+  .rmt-modal{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--overlay-c) 80%,transparent)}
+  .rmt-modal[hidden]{display:none}
+  .rmt-modal-box{background:var(--surface);border:2px solid var(--danger);border-radius:12px;max-width:480px;padding:22px 26px;text-align:center;box-shadow:0 14px 44px color-mix(in srgb,var(--shadow-c) 60%,transparent)}
+  .rmt-modal-msg{font-family:var(--head);font-weight:700;font-size:15px;color:var(--text);line-height:1.45}
+  .rmt-modal-acts{display:flex;justify-content:center;gap:12px;margin-top:18px}
+  .rmt-modal-acts .rmt-stop{font-size:14px;padding:9px 20px}
+  .rmt-modal-acts .pill{font-size:13px;padding:9px 18px}
+  .pill.remote-enter.pending{border-color:var(--warn);color:var(--warn)}
+  /* The page's own STOP buttons are locked in remote-control mode: grey them, so the one
+     red STOP on screen is the banner's. */
+  body.remote-mode .btn-stop,body.remote-mode .dock-stop{opacity:.3}
+  html.arena-alt #remoteEnterBtn{display:none}
 
   /* ── Edit view: tab bar (Designer | YAML) + YAML pane ───────────── */
   .edit-view .edit-tabs{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden;flex:0 0 auto}
@@ -2377,6 +2404,28 @@
      (R' = R+G+B, G' = B' = 0) so they add no green or blue light of their own. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><filter id="uiNightRed" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 1 1 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter></svg>
 
+<!-- ===== REMOTE-CONTROL banner (LAB-357) — shown only in remote-control mode. It stays
+     outside the page parts that go `inert`, so STOP and Exit are the only live controls. ===== -->
+<div class="remote-banner" id="remoteBanner" role="region" aria-label="Remote control" hidden>
+  <div class="rmt-main">
+    <span class="rmt-text" id="remoteText">REMOTE CONTROL — runs are started by an external program. This page is display only.</span>
+    <span class="rmt-state" id="remoteState" role="status" aria-live="polite">Waiting for a run</span>
+  </div>
+  <span class="rmt-acts">
+    <button type="button" class="rmt-stop" id="remoteStopBtn" disabled title="Stop the running protocol now — asks for confirmation first. Enabled only while a run is active.">■ STOP</button>
+    <button type="button" class="pill" id="remoteExitBtn" title="Leave remote-control mode and give the page back to the operator. Not available while a run is active.">Exit remote control</button>
+  </span>
+</div>
+<div class="rmt-modal" id="remoteStopModal" role="alertdialog" aria-modal="true" aria-labelledby="remoteStopMsg" hidden>
+  <div class="rmt-modal-box">
+    <div class="rmt-modal-msg" id="remoteStopMsg">Are you sure you want to stop? We're in remote control mode.</div>
+    <div class="rmt-modal-acts">
+      <button type="button" class="rmt-stop" id="remoteStopYes" title="Stop the running protocol now (the same STOP as the Run view's button)">Stop the run</button>
+      <button type="button" class="pill" id="remoteStopNo" title="Close this dialog; the run continues (Esc)">Keep running</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== TOP BAR (the persistent spine) ===== -->
 <div class="topbar">
   <span class="brand">Arena Studio</span><span id="tierBadge"></span>
@@ -2641,6 +2690,7 @@
           <span class="dim rb-count" id="rbCount"></span>
           <span class="rb-cl" id="rbClosedLoop" title="Closed-loop (FicTrac Mode 3/4) — lights green while a trial or experiment is driving the arena from FicTrac">closed-loop</span>
           <span class="dim rb-bias" id="rbBias" title="Closed-loop bias — the disturbance waveform the running protocol pushed to the bridge, and the angle it is currently adding. Set per condition in the protocol (fictrac → Start closed-loop)."></span>
+          <button type="button" class="pill remote-enter" id="remoteEnterBtn" title="Remote control — let an external program (Python or MATLAB, through the rig gateway) start the runs. This page then only displays them: everything that can change a run is locked; STOP, Exit and the display (Log / Scope) stay usable. Needs the controller and the bridge connected, and no run active.">Remote control</button>
           <button class="pill led-off" id="btnLedOff" title="Turn the stimulus LED off now — sets Analog Out to 5000 mV (BuckPuck dark). Works during a run.">TURN OFF LED</button>
         </div>
       </div>
@@ -3452,7 +3502,7 @@
 <script src="js/arena-link.js"></script>
 <script src="js/arena-runner-g6.js?v=20261018-worker-timer"></script> <!-- ?v= forces a fresh load: a cached runner/client/session silently keeps the old behavior (closed-loop start, bridge-loss stop, throttled setTimeout waits → hidden-window 4 s steps) -->
 <script src="js/run-log.js?v=20261015-bridge-lost"></script>
-<script src="js/fictrac-bridge-client.js?v=20261015-bridge-lost"></script>
+<script src="js/fictrac-bridge-client.js?v=20261109-remote"></script>
 <script src="js/arena-session.js?v=20261015-bridge-lost"></script>
 <script src="js/pat-encoder.js"></script>
 <script src="js/pattern-set.js?v=1006-partial-cols"></script>
@@ -3471,7 +3521,7 @@ function studioMarkerCurrent(stored, current) {
 }
 </script>
 <script src="js/studio-meta.js"></script>
-<script src="js/studio-url-state.js?v=20260924-replay"></script>
+<script src="js/studio-url-state.js?v=20261109-remote"></script>
 <script src="js/studio-runlog-adapter.js?v=20261015-bridge-lost"></script>
 <script src="js/studio-preview-sources.js?v=20261015-s2"></script> <!-- pattern-preview byte sources, layered (builtin < shared < colocated < uploaded) -->
 <script src="js/studio-postmortem.js"></script>
@@ -3486,6 +3536,7 @@ function studioMarkerCurrent(stored, current) {
 <script src="js/arena-replay-viewer-protocol.js"></script>
 <script src="js/fly-gait.js?v=20260926-gait"></script> <!-- replay 3D fly: tripod walking model (v0.90) -->
 <script src="js/studio-replay.js?v=20260926-gait"></script> <!-- run-log replay (v0.88): pure core + Run-view controller -->
+<script src="js/studio-remote-control.js?v=20261109-remote"></script> <!-- remote-control mode (LAB-357): request validation + run state machine -->
 
 <!-- ============================================================ -->
 <!-- (2) STUDIO SHELL — the spine (classic; owns view model + wiring) -->
@@ -3922,7 +3973,9 @@ function studioMarkerCurrent(stored, current) {
             Studio._pendingCommit = finalizeThenCommit;
             rawLine('run log commit deferred until the controller post-mortem finishes', 'warn');
         } else {
-            finalizeThenCommit(); // course pipeline — async, best-effort
+            // The promise is kept so remote-control mode can wait for this run's export
+            // before it starts the next run (a log_export closes whatever log is open).
+            Studio._runFinalize = finalizeThenCommit(); // course pipeline — async, best-effort
         }
     }
 
@@ -4248,7 +4301,12 @@ function studioMarkerCurrent(stored, current) {
         return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
 
-    function updateRunGate() {
+    // THE "Run experiment" rule: Meta.canRunExperiment (connected, a saved protocol,
+    // Experimenter + Genotype, the bridge, every pattern on the SD) + the duplicate-name
+    // wording + the sticky controller-state verdict. One predicate for the button
+    // (updateRunGate) and for a remote run with intent "experiment" (Studio.runExperimentGate,
+    // LAB-357) — never a second copy of the conditions.
+    function runExperimentGate() {
         const doc = Studio.currentDoc;
         const bridge = Studio.session && Studio.session.bridge;
         let gate = Meta.canRunExperiment({
@@ -4279,15 +4337,24 @@ function studioMarkerCurrent(stored, current) {
             };
         }
         // Sticky controller state (panel mode / refresh / panel firmware) — the planned verdict
-        // from the last dry preflight; recomputed when protocol, rig or controller changed.
+        // from the last dry preflight (kept fresh by updateRunGate below).
+        const ctlBlocked = (Studio._controllerGate && !Studio._controllerGate.ok) ? Studio._controllerGate.reason
+            : Studio.rigStrictFault ? 'rig (strict): ' + Studio.rigStrictFault : null;
+        if (gate.ok && ctlBlocked) gate = { ok: false, reason: ctlBlocked };
+        return { gate: gate, ctlBlocked: ctlBlocked, ambiguous: ambiguous };
+    }
+    Studio.runExperimentGate = () => runExperimentGate().gate; // {ok, reason} — what the Run button obeys right now
+
+    function updateRunGate() {
+        const doc = Studio.currentDoc;
+        // The controller verdict is recomputed when protocol, rig or controller changed.
         const ctlKey = Studio._controllerGateKey ? Studio._controllerGateKey() : '';
         if (Studio.refreshControllerGate && Studio.session && Studio.session.connected && doc &&
             (!Studio._controllerGate || Studio._controllerGate.key !== ctlKey)) {
             Studio.refreshControllerGate(); // async; calls back into updateRunGate
         }
-        const ctlBlocked = (Studio._controllerGate && !Studio._controllerGate.ok) ? Studio._controllerGate.reason
-            : Studio.rigStrictFault ? 'rig (strict): ' + Studio.rigStrictFault : null;
-        if (gate.ok && ctlBlocked) gate = { ok: false, reason: ctlBlocked };
+        const verdict = runExperimentGate();
+        const gate = verdict.gate, ctlBlocked = verdict.ctlBlocked, ambiguous = verdict.ambiguous;
         const runBtn = $('btnRunExp');
         runBtn.disabled = !gate.ok;
         // Show the experiment length up front (steps + estimated wall-clock) so you
@@ -4678,6 +4745,9 @@ function studioMarkerCurrent(stored, current) {
             mode: Studio.mode,
             // fw #50 soak driver armed in this tab (advanced-only; clean-URL rule).
             soak: !!Studio.soak,
+            // Remote-control mode (LAB-357): on, or requested by ?remote=1 and still
+            // waiting for the controller + bridge. Scrubbed on exit (clean-URL rule).
+            remote: !!(Studio.remote && (Studio.remote.on || Studio.remote.requested)),
             protocolKey: Studio.currentDoc && Studio.currentDoc.protocolKey,
             // Course-repo provenance (?repo=owner/name&p=<path>): set by a
             // validated ?repo= load or an in-app course-repo open/save.
@@ -4733,6 +4803,7 @@ function studioMarkerCurrent(stored, current) {
     }
     $('btnStopRun').addEventListener('click', doStop);
     $('btnStopDock').addEventListener('click', doStop);
+    Studio.doStop = doStop; // remote-control mode (LAB-357) stops a run through this same path
 
     // All on / All off (the "is it wired?" check)
     $('btnAllOn').addEventListener('click', async () => {
@@ -8068,6 +8139,500 @@ if (window.StudioReplay && window.Studio && window.Scope) {
 </script>
 
 <!-- ============================================================ -->
+<!-- (2d) REMOTE CONTROL (LAB-357) — the page as a display, runs started by an external
+     program through the rig gateway. The Studio STILL executes the steps: a remote `run`
+     is Studio.loadProtocol + Studio.runOnce, exactly what the QC harness drives, and a
+     stop is the page's own STOP (Studio.doStop). Request validation, the run state
+     machine and the status messages are js/studio-remote-control.js (Node-tested); this
+     is the thin glue: banner, inert page, STOP dialog, the bridge events. Classic on
+     purpose, like Connect/STOP — it owns a STOP path, so it must survive a failed
+     ES-module import. Module-block helpers (loadProtocol, runOnce, finalizeTrialQuality)
+     are read lazily at call time. Allowed in safe mode (Run-view function; the protocol
+     comes from the controlling program). Exclusive with soak and with replay.
+     Reference: docs/development/studio-remote-control.md. -->
+<!-- ============================================================ -->
+<script>
+'use strict';
+(function RemoteControl() {
+    const Studio = window.Studio;
+    const RC = window.StudioRemoteControl;
+    const $ = (id) => document.getElementById(id);
+    if (!Studio || !RC || !$('remoteBanner') || !$('remoteEnterBtn')) return;
+    const session = Studio.session;
+    const bridge = session && session.bridge;
+    const machine = RC.createMachine();
+    // The page keeps the copy in its markup; the module is the authority (tests pin both).
+    $('remoteText').textContent = RC.BANNER_TEXT;
+    $('remoteStopMsg').textContent = RC.STOP_CONFIRM_TEXT;
+    $('remoteStopYes').textContent = RC.STOP_CONFIRM_YES;
+    $('remoteStopNo').textContent = RC.STOP_CONFIRM_NO;
+
+    const R = (Studio.remote = {
+        on: false, // remote-control mode is active (the page is locked, the display stays live)
+        requested: false, // ?remote=1 (or a click) is waiting for the controller + bridge
+        machine: machine,
+        note: null // attach / bridge trouble shown on the state line
+    });
+    // What stays live. The rule is "lock everything that can change a run, the arena or the
+    // protocol; leave the display usable" — and the default is LOCKED: a control is inert
+    // unless it is listed here.
+    //  - the banner, its dialog, and the run-log upload dialog (its Close only dismisses a
+    //    message; the banner is stacked above it);
+    //  - the bottom dock AS A DISPLAY: resize, Log / Scope / collapse, the scope's own
+    //    settings (window, span, limits, labels, sound) and its menu, the canvas, the log
+    //    text (scroll, select) with Copy and Save. NOT the dock's STOP (the banner's STOP,
+    //    with its confirmation, is the only stop), All on / All off, Clear, or Push log.
+    const LIVE = [
+        '#remoteBanner', '#remoteStopModal', '#rlUploadOverlay',
+        '#rlogResizer', '#dockSeg', '#scopeCtrls', '#scopePane', '.scope-sound-menu',
+        '.run-dock .dock-pane', '#btnLogCopy', '#btnLogSave'
+    ].join(',');
+    // Scroll containers: they stay live so the wheel scrolls them, and each of their children
+    // is locked on its own (an inert child is transparent to the wheel, so it scrolls its
+    // container): the Run column, the sequence list, the Run-details panel.
+    const SHELLS = ['.run-main', '#seqBody', '#metaPanel'].join(',');
+    const KEEP = LIVE + ',' + SHELLS;
+    const SKIP_TAGS = ['SCRIPT', 'STYLE', 'LINK', 'TEMPLATE'];
+    let frozen = null; // Map(element → it was inert before we entered)
+    let observer = null;
+    let ticker = null; // 2 s housekeeping while the mode is on (reconnect + re-attach)
+    let pendingTimer = null; // retries a pending ?remote=1 request
+    let nextConnectAt = 0; // bridge reconnect attempts are spaced (a dead gateway must not flood the log)
+    const CONNECT_EVERY_MS = 5000;
+    let entering = false;
+    let attaching = false;
+    let lastReason = '';
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const log = (m, kind) => { if (Studio.rawLog) Studio.rawLog('remote: ' + m, kind || 'info'); };
+    const bridgeUrl = () => ((($('cFtUrl') || {}).value) || 'ws://localhost:8765').trim();
+    const running = () => !!(session && session.running);
+    const busy = () => machine.busy || running();
+
+    function context() {
+        const doc = Studio.currentDoc;
+        const ed = Studio.editor;
+        return {
+            alt: document.documentElement.classList.contains('arena-alt'),
+            running: running(),
+            soak: !!Studio.soak,
+            outputInhibited: session && session.outputInhibited ? (session.outputInhibitedReason || true) : false,
+            importMode: !!Studio.importMode,
+            unsavedEdits: !!((doc && doc.source === 'local-unsaved') || (ed && ed.hasUnappliedYaml && ed.hasUnappliedYaml())),
+            controllerConnected: !!(session && session.connected),
+            bridgeConnected: !!(bridge && bridge.connected),
+            bridgeRemote: bridge && bridge.supportsRemote ? bridge.supportsRemote() : false
+        };
+    }
+
+    // ---- the locked page ------------------------------------------------------
+    // Walk down from <body>: a LIVE element is left alone; an element that holds one (or is
+    // a scroll shell) stays live only as a container, and its children are locked one by
+    // one; everything else goes `inert` as a whole. `inert` cannot be undone further down
+    // the tree, hence the walk.
+    function freezeNode(el) {
+        if (!el || el.nodeType !== 1 || !frozen || frozen.has(el)) return;
+        if (SKIP_TAGS.indexOf(el.tagName) !== -1 || el.matches(LIVE)) return;
+        if (el.matches(SHELLS) || el.querySelector(KEEP)) {
+            // Anything added to a container later (a re-rendered sequence row, a popup) is
+            // locked by the same rule.
+            if (observer) observer.observe(el, { childList: true });
+            Array.from(el.children).forEach(freezeNode);
+            return;
+        }
+        frozen.set(el, el.hasAttribute('inert'));
+        el.setAttribute('inert', '');
+    }
+    function freezePage() {
+        frozen = new Map();
+        if (window.MutationObserver) {
+            observer = new MutationObserver((muts) => {
+                muts.forEach((m) => m.addedNodes && m.addedNodes.forEach(freezeNode));
+            });
+            observer.observe(document.body, { childList: true });
+        }
+        Array.from(document.body.children).forEach(freezeNode);
+        const a = document.activeElement;
+        if (a && a !== document.body && a.closest('[inert]') && typeof a.blur === 'function') a.blur();
+    }
+    function thawPage() {
+        if (observer) { observer.disconnect(); observer = null; }
+        if (frozen) frozen.forEach((wasInert, el) => { if (!wasInert) el.removeAttribute('inert'); });
+        frozen = null;
+    }
+    // Keys never reach the page's own shortcuts (Space, Ctrl+S, Esc-closes-menu, the editor's
+    // undo, …). Only propagation is cut, never the default action: Tab / Enter / Space work
+    // on the live buttons, typing works in the scope's fields. The browser's own keys (zoom,
+    // reload, full screen, DevTools) are not touched at all.
+    function browserKey(e) {
+        const k = e.key;
+        if (/^F\d{1,2}$/.test(k)) return true;
+        return (e.ctrlKey || e.metaKey) && !e.altKey && ['-', '_', '=', '+', '0', 'r', 'R'].indexOf(k) !== -1;
+    }
+    function onKey(e) {
+        if (!R.on || browserKey(e)) return;
+        e.stopImmediatePropagation();
+        if (e.type === 'keydown' && e.key === 'Escape' && !$('remoteStopModal').hidden) {
+            e.preventDefault();
+            closeStopDialog();
+        }
+    }
+    ['keydown', 'keypress', 'keyup'].forEach((t) => window.addEventListener(t, onKey, true));
+    // A file dropped on a locked page would make the browser navigate away from the run.
+    ['dragover', 'drop'].forEach((t) => window.addEventListener(t, (e) => {
+        if (!R.on) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }, true));
+    // Back / Forward restores a view mode (the shell's popstate handler): remote control
+    // lives in the Run view, so put it back.
+    window.addEventListener('popstate', () => {
+        if (R.on && Studio.mode !== 'run' && !running()) Studio.setMode('run', { push: false });
+    });
+
+    // ---- banner ---------------------------------------------------------------
+    function refresh() {
+        const active = busy();
+        document.body.classList.toggle('remote-mode', R.on);
+        $('remoteBanner').hidden = !R.on;
+        $('remoteStopBtn').disabled = !(R.on && active);
+        const exit = $('remoteExitBtn');
+        exit.disabled = active;
+        exit.title = active
+            ? 'Not available while a run is active — STOP the run first, or wait for it to end.'
+            : 'Leave remote-control mode and give the page back to the operator.';
+        // The Connect button is locked with the rest of the page: say how to get it back.
+        const noCtl = R.on && !(session && session.connected)
+            ? 'controller NOT connected — Exit remote control, click Connect, then enter again' : null;
+        $('remoteState').textContent = machine.stateLine() + (R.note ? ' · ' + R.note : '') + (noCtl ? ' · ' + noCtl : '');
+        if (!active && !$('remoteStopModal').hidden) closeStopDialog(); // the run ended under the dialog
+        const btn = $('remoteEnterBtn');
+        btn.classList.toggle('pending', R.requested && !R.on);
+        btn.textContent = R.requested && !R.on ? 'Remote control: waiting…' : 'Remote control';
+        btn.title = R.requested && !R.on
+            ? 'Remote control was requested and starts when the controller and the bridge are connected' +
+              (lastReason ? ' (now: ' + lastReason + ')' : '') + '. Click to cancel the request.'
+            : 'Remote control — let an external program (Python or MATLAB, through the rig gateway) start the runs. ' +
+              'This page then only displays them: everything that can change a run is locked; STOP, Exit and the display (Log / Scope) stay usable. ' +
+              'Needs the controller and the bridge connected, and no run active.';
+    }
+    function explain(reason, quiet) {
+        const changed = reason !== lastReason;
+        lastReason = reason;
+        if (quiet && !changed) return;
+        Studio.showBanner('Remote control: ' + reason);
+        log('cannot enter — ' + reason, 'warn');
+    }
+
+    // ---- enter / exit ---------------------------------------------------------
+    async function ensureBridge(force) {
+        if (!bridge) return;
+        if (!bridge.connected && (force || Date.now() >= nextConnectAt)) {
+            nextConnectAt = Date.now() + CONNECT_EVERY_MS;
+            try { bridge.connect(bridgeUrl()); } catch (_) { /* reported by canEnter below */ }
+            for (let i = 0; i < 60 && !bridge.connected; i++) await sleep(25);
+        }
+        // hello_ack carries `remote: true`; a bridge that never answers hello stays null.
+        for (let i = 0; i < 40 && bridge.connected && bridge.supportsRemote() === null; i++) await sleep(25);
+    }
+    async function enter(opts) {
+        const auto = !!(opts && opts.auto);
+        if (R.on) return true;
+        if (entering) return false;
+        entering = true;
+        try {
+            // The controller first: without it nothing can run, and the bridge must not be
+            // opened behind the operator's back on a page that is not ready.
+            if (session && session.connected) await ensureBridge(!auto);
+            const gate = RC.canEnter(context());
+            if (!gate.ok) { explain(gate.reason, auto); refresh(); return false; }
+            const ack = await bridge.remoteAttach(true);
+            if (!ack.ok) { explain('the gateway refused — ' + (ack.error || 'no reason given'), auto); refresh(); return false; }
+            // A run may have started while the attach was in flight (never from this glue).
+            if (running()) {
+                bridge.remoteAttach(false);
+                explain('A run is active — wait for it to finish (or STOP it) first.', auto);
+                refresh();
+                return false;
+            }
+            apply(true);
+            return true;
+        } finally {
+            entering = false;
+        }
+    }
+    function apply(on) {
+        R.on = on;
+        R.requested = false;
+        R.note = null;
+        lastReason = '';
+        if (pendingTimer) { clearInterval(pendingTimer); pendingTimer = null; }
+        if (on) {
+            ['fileMenu', 'settingsMenu'].forEach((id) => { const m = $(id); if (m) m.classList.remove('open'); });
+            document.body.classList.remove('helpmode');
+            const pb = $('banner'); // a "Remote control: waiting for …" note is over now
+            if (pb && /^Remote control:/.test(pb.textContent)) pb.classList.remove('show');
+            if (Studio.mode !== 'run') Studio.setMode('run', { push: false });
+            freezePage();
+            if (!ticker) ticker = setInterval(tick, 2000);
+            log('remote-control mode ON — runs are started by an external program; this page is display only', 'warn');
+        } else {
+            thawPage();
+            if (ticker) { clearInterval(ticker); ticker = null; }
+            closeStopDialog();
+            log('remote-control mode OFF — the page is the operator\'s again', 'info');
+        }
+        Studio.updateUrl({ push: false });
+        if (Studio.refreshState) Studio.refreshState();
+        refresh();
+    }
+    async function exit() {
+        if (!R.on || busy()) return;
+        // The operator's exit always succeeds here; the gateway is told, not asked.
+        try { if (bridge) await bridge.remoteAttach(false); } catch (_) { /* never rejects */ }
+        apply(false);
+    }
+    // ?remote=1, or a click before the connections exist: wait, then enter.
+    function request() {
+        if (R.on) return;
+        R.requested = true;
+        if (!pendingTimer) pendingTimer = setInterval(tryAuto, 2000);
+        Studio.updateUrl({ push: false });
+        refresh();
+        tryAuto();
+    }
+    function cancelRequest() {
+        R.requested = false;
+        if (pendingTimer) { clearInterval(pendingTimer); pendingTimer = null; }
+        lastReason = '';
+        Studio.updateUrl({ push: false });
+        refresh();
+    }
+    function tryAuto() {
+        if (!R.requested || R.on || entering) return;
+        if (!(session && session.connected)) {
+            explain('waiting for the controller — click Connect (Web Serial needs that one click).', true);
+            refresh();
+            return;
+        }
+        enter({ auto: true });
+    }
+    // While the mode is on: keep the bridge connected and this page attached.
+    async function tick() {
+        if (!R.on || !bridge) return;
+        if (!bridge.connected) {
+            R.note = 'bridge disconnected — reconnecting…';
+            if (Date.now() >= nextConnectAt) {
+                nextConnectAt = Date.now() + CONNECT_EVERY_MS;
+                try { bridge.connect(bridgeUrl()); } catch (_) { /* next attempt */ }
+            }
+        } else if (!bridge.remoteAttached && bridge.supportsRemote() !== null && !attaching) {
+            attaching = true;
+            try {
+                const ack = await bridge.remoteAttach(true);
+                R.note = ack.ok ? null : 'NOT attached to the gateway: ' + (ack.error || 'no answer');
+            } finally {
+                attaching = false;
+            }
+        }
+        refresh();
+    }
+
+    // ---- STOP -----------------------------------------------------------------
+    function openStopDialog() {
+        if (!R.on || !busy()) return;
+        $('remoteStopModal').hidden = false;
+        $('remoteStopNo').focus(); // Enter must not stop a run by accident
+    }
+    function closeStopDialog() {
+        const wasOpen = !$('remoteStopModal').hidden;
+        $('remoteStopModal').hidden = true;
+        if (wasOpen && R.on) $('remoteStopBtn').focus();
+    }
+    // The page's own STOP path, with the source recorded for the terminal status.
+    function stopRun(source) {
+        if (!machine.requestStop(source)) return false;
+        log('stop requested (' + source + ')', 'warn');
+        // Before the sequence starts there is nothing to stop yet: the 'sequence-start'
+        // handler below stops it the moment it does.
+        if (running() && Studio.doStop) Studio.doStop();
+        refresh();
+        return true;
+    }
+    $('remoteStopBtn').addEventListener('click', openStopDialog);
+    $('remoteStopNo').addEventListener('click', closeStopDialog);
+    $('remoteStopYes').addEventListener('click', () => { closeStopDialog(); stopRun('operator'); });
+    $('remoteExitBtn').addEventListener('click', exit);
+    $('remoteEnterBtn').addEventListener('click', () => {
+        if (R.requested && !R.on) { cancelRequest(); return; }
+        lastReason = '';
+        enter();
+    });
+
+    // ---- a remote run ---------------------------------------------------------
+    const send = (msg) => (msg && bridge ? bridge.sendRunStatus(msg) : false);
+    const META_FIELDS = { experimenter: 'mExp', genotype: 'mGeno', age: 'mAge', sex: 'mSex', fly_number: 'mFlyNum', notes: 'mNotes' };
+    // Through the Run details panel itself — the fields startRunLog() reads. A value the
+    // controlled list does not have is kept and marked, as fillMetaSelect does for a value
+    // that left its vocabulary; a key the request leaves out keeps what the panel shows.
+    function applyMetadata(md) {
+        Object.keys(md || {}).forEach((key) => {
+            const el = $(META_FIELDS[key]);
+            if (!el) return;
+            const v = String(md[key] == null ? '' : md[key]);
+            if (el.tagName === 'SELECT' && v && !Array.from(el.options).some((o) => o.value === v)) {
+                const o = document.createElement('option');
+                o.value = v;
+                o.textContent = v + ' (not in list)';
+                el.appendChild(o);
+                log('metadata ' + key + ' "' + v + '" is not in the controlled list — kept as given', 'warn');
+            }
+            el.value = v;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+    function bannerText() {
+        const b = $('banner');
+        return b && b.classList.contains('show') ? b.textContent.trim() : '';
+    }
+    async function startRun(req) {
+        if (!machine.begin(req)) { send(RC.buildStatus(req.id, 'rejected', { detail: RC.DETAIL.busy })); return; }
+        refresh();
+        let prevLog = Studio.activeRunLog;
+        let started = false;
+        let summary = null;
+        let error = null;
+        try {
+            // The previous run's commit pipeline asks the bridge for its log (log_export),
+            // which closes whatever log is open: let it finish before a new one opens.
+            if (Studio._runFinalize) {
+                await Promise.race([Promise.resolve(Studio._runFinalize).catch(() => {}), sleep(30000)]);
+            }
+            if ($('rlUploadOverlay')) $('rlUploadOverlay').style.display = 'none'; // a held upload message would cover the run
+            const b = $('banner');
+            if (b) { b.classList.remove('show'); b.textContent = ''; } // the next banner is THIS request's reason
+            applyMetadata(req.metadata);
+            const loaded = await Studio.loadProtocol(req.protocol, req.name, 'committed', { landIn: 'run', unattended: true });
+            if (!loaded) {
+                send(machine.reject('the protocol did not load: ' + (bannerText() || 'see the Studio log')));
+                return;
+            }
+            // loadProtocol returns before the document's sha256 / rig are known (async sync);
+            // run_metadata needs both.
+            const doc = Studio.currentDoc;
+            for (let i = 0; i < 200 && doc && !doc.sha256 && Studio.currentDoc === doc; i++) await sleep(25);
+            if (!R.on) { send(machine.reject(RC.DETAIL.notRemote)); return; }
+            if (machine.stopSource) {
+                send(machine.reject(machine.stopSource === 'remote' ? RC.DETAIL.remoteStop : RC.DETAIL.operatorStop));
+                return;
+            }
+            // A recorded run obeys the "Run experiment" button's own rule, judged now that the
+            // request's metadata is in the panel and its protocol is the open document.
+            if (req.intent === 'experiment') {
+                try { if (Studio.refreshControllerGate) await Studio.refreshControllerGate(); } catch (_) { /* runOnce asserts it for real */ }
+                const eg = RC.experimentGate({
+                    intent: req.intent,
+                    experimenter: ($('mExp') || {}).value,
+                    genotype: ($('mGeno') || {}).value,
+                    gate: Studio.runExperimentGate ? Studio.runExperimentGate() : null
+                });
+                if (!eg.ok) { send(machine.reject(eg.detail)); return; }
+            }
+            if (b) { b.classList.remove('show'); b.textContent = ''; }
+            send(machine.accept());
+            refresh();
+            prevLog = Studio.activeRunLog;
+            try {
+                summary = await Studio.runOnce(req.intent === 'experiment');
+            } catch (e) {
+                error = 'run error: ' + (e && e.message ? e.message : e);
+            }
+            started = Studio.activeRunLog !== prevLog;
+            if (!started) {
+                send(machine.reject('the run could not start: ' +
+                    (error || bannerText() || 'the preflight refused it (controller settings or a requires: gate)')));
+                return;
+            }
+            // THE ORDER RULE: the run's log (on the gateway: its MCAP bag) is closed BEFORE
+            // the terminal status goes out — same socket, so the gateway closes the bag before
+            // it reads the status. The page's own run-end path normally has done it already
+            // (onRunFinished); this makes it certain, after the last lines were written.
+            try {
+                if (Studio.finalizeTrialQuality) await Studio.finalizeTrialQuality(Studio._tqRunId);
+            } catch (_) { /* best effort, as in onRunFinished */ }
+            // Also when the bridge is down: logging must not come back on by itself at the
+            // reconnect (the client re-asserts it) with no run to record.
+            if (bridge && bridge.logging) bridge.setLogging(false);
+            send(machine.finish(summary, { started: true, error: error }));
+        } catch (e) {
+            const why = 'remote run error: ' + (e && e.message ? e.message : e);
+            log(why, 'err');
+            send(machine.busy ? (started ? machine.finish(summary, { started: true, error: why }) : machine.reject(why)) : null);
+        } finally {
+            refresh();
+        }
+    }
+    function onRunRequest(msg) {
+        const d = RC.decide(msg, {
+            remoteOn: R.on,
+            busy: busy(),
+            runActive: machine.busy,
+            controllerConnected: !!(session && session.connected)
+        });
+        if (d.reply) {
+            send(d.reply);
+            log('request ' + (msg && msg.id) + ' rejected — ' + d.reply.detail, 'warn');
+        }
+        if (d.warnings) d.warnings.forEach((w) => log(w, 'warn'));
+        if (d.do === 'run') {
+            log('run request ' + d.request.id + ': ' + d.request.name + ' (' + d.request.intent + ')' +
+                (d.request.client ? ' from ' + d.request.client : ''), 'info');
+            startRun(d.request);
+        } else if (d.do === 'stop') {
+            stopRun('remote');
+        }
+    }
+
+    // ---- wiring ---------------------------------------------------------------
+    if (bridge && typeof bridge.on === 'function' && typeof bridge.remoteAttach === 'function') {
+        bridge.on('run_request', onRunRequest);
+        bridge.on('remote_attach', (info) => {
+            if (!R.on) return;
+            R.note = info && info.ok && info.on ? null
+                : 'NOT attached to the gateway' + (info && (info.error || info.reason) ? ': ' + (info.error || info.reason) : '');
+            refresh();
+        });
+        // The bridge is gone: the controlling program can no longer stop or follow the run,
+        // and the gateway has already told it "Studio disconnected". Fail closed — stop.
+        bridge.on('lost', () => {
+            if (!R.on) return;
+            R.note = 'bridge lost — reconnecting…';
+            if (machine.busy) stopRun('bridge');
+            refresh();
+        });
+        bridge.on('status', () => { if (R.on || R.requested) refresh(); });
+    }
+    if (session && typeof session.on === 'function') {
+        session.on('state', () => { if (R.requested) tryAuto(); refresh(); });
+        session.on('runstatus', (s) => {
+            if (!s || !machine.busy) return;
+            if (s.phase === 'sequence-start') {
+                send(machine.started(s.total));
+                if (machine.stopSource && Studio.doStop) Studio.doStop(); // a stop that arrived before the start
+            } else if (s.phase === 'step-start') {
+                send(machine.progress({ index: s.index, total: s.total, conditionName: s.step && s.step.conditionName }));
+            }
+            refresh();
+        });
+    }
+    R.enter = enter;
+    R.exit = exit;
+    R.request = request;
+    R.context = context;
+    refresh();
+})();
+</script>
+
+<!-- ============================================================ -->
 <!-- (3) MODULE BLOCK — ES-import-dependent code (protocol parse + run) -->
 <!-- ============================================================ -->
 <script type="module">
@@ -10140,9 +10705,14 @@ Studio.loadProtocol = async function (text, filename, source, opts) {
         return false;
     }
     const unappliedYaml = Studio.editor.hasUnappliedYaml && Studio.editor.hasUnappliedYaml();
-    if (((Studio.currentDoc && Studio.currentDoc.source === 'local-unsaved') || unappliedYaml) &&
-        !confirm('Discard unsaved edits and open "' + (filename || 'protocol') + '"?')) {
-        return false;
+    if ((Studio.currentDoc && Studio.currentDoc.source === 'local-unsaved') || unappliedYaml) {
+        // Remote-control mode (opts.unattended): never a blocking dialog — window.confirm
+        // stalls the page's event loop. Unsaved edits are kept and the load is refused.
+        if (opts && opts.unattended) {
+            Studio.showBanner('The open protocol has unsaved edits — "' + (filename || 'protocol') + '" was not opened.');
+            return false;
+        }
+        if (!confirm('Discard unsaved edits and open "' + (filename || 'protocol') + '"?')) return false;
     }
     // Designer re-parses + validates on its own path (same functions), then
     // calls Studio.syncFromEditor via its loadYamlText tail. The registry-key
@@ -10526,6 +11096,11 @@ Studio.finalizeTrialQuality = function (runId) {
 
 Studio.startSoak = async function (cfg) {
     if (Studio.soak) return;
+    // Soak and remote-control mode exclude each other (two drivers of Studio.runOnce).
+    if (Studio.remote && (Studio.remote.on || Studio.remote.requested)) {
+        Studio.showBanner('Soak is not available in remote-control mode — exit remote control first.');
+        return;
+    }
     if (!Studio.advanced) { Studio.showBanner('Soak is an advanced-mode feature.'); return; }
     const doc = Studio.currentDoc;
     if (!doc || !Studio.session) { Studio.showBanner('Soak: open a protocol first.'); return; }
@@ -12624,6 +13199,13 @@ async function initFromUrl() {
         if (state.soak === true) {
             Studio.soakRequested = true;
             setTimeout(() => Studio.showBanner('Soak armed — open protocols/soak_mode3_closed_loop.yaml, connect, then Protocol ▾ → Soak…'), 800);
+        }
+        // ?remote=1 requests remote-control mode (LAB-357). It cannot enter yet — Web Serial
+        // needs its one human click on Connect — so the request waits for the controller and
+        // the bridge (classic glue "(2d) REMOTE CONTROL"). Exclusive with a soak request.
+        if (state.remote === true && Studio.remote) {
+            if (state.soak === true) Studio.rawLog('remote=1 ignored: soak=1 is set (soak and remote control exclude each other)', 'warn');
+            else Studio.remote.request();
         }
         if (state.advanced === true) {
             Studio.advancedUrlRequested = true;
@@ -18576,6 +19158,8 @@ initFromUrl();
     '[data-cmd="ctelem"]': 'Turn the controller\'s built-in activity recording on or off (it is written into the run log alongside the tracking data).',
     '[data-cmd="chealth"]': 'Ask the controller how it is doing — loop timing, memory-card read times, and what it was doing before its last restart.',
     '#fmSoak': 'Repeat the open protocol unattended (overnight) to catch the rare controller freeze; on a freeze it records diagnostics and, if you chose so, restarts the controller and continues.',
+    /* Remote control */
+    '#remoteEnterBtn': 'Hand the page to a program: it starts the experiments, and this page only shows them. Everything is locked except STOP and Exit. Needs the arena and the bridge connected.',
     /* Run-log replay */
     '#replayOpenBtn': 'Watch a recorded run again: the sequence, the fly’s behaviour on the Scope, and (optionally) the arena in 3D. Pick a recent run or a log file — the protocol is found for you. Nothing is sent to the arena.',
     '#fmReplay': 'Watch a recorded run again from its log — the protocol is found for you, and nothing is sent to the arena.',

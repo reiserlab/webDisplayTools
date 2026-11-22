@@ -10,7 +10,8 @@ MATLAB. It records decisions and their reasons; it moves no code.
 1. **Two peer runners for the same protocol v3 YAML.** Arena Studio (the web) stays the primary tool
    and the only UI. A **Python headless runner** is the alternative for command-line, unattended and
    sequencer-triggered runs. Neither runner is a client of the other; the web is not being moved onto
-   Python.
+   Python. *(Amended 2026-11-09, LAB-357: a Python client may start runs in a Studio that is in
+   remote-control mode; the Studio still executes the steps. See `studio-remote-control.md`.)*
 2. **Three repositories with downward dependencies:**
    - `reiserlab/webDisplayTools`: the browser tools and their rig-side gateway (today's
      `rig/nodes/bridge_node.py`), the protocol v3 spec and its conformance fixtures, the arena

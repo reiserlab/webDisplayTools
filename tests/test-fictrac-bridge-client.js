@@ -774,13 +774,14 @@ async function main() {
             logging: false
         });
         check(
-            'hello_ack recorded (connectors null: a bridge without device connectors)',
+            'hello_ack recorded (connectors null: a bridge without device connectors; remote false: no remote-control relay)',
             client.bridgeInfo,
             {
                 version: '3.0 · behavior_v2',
                 levels: ['behavior_v2', 'behavior_v1', 'full'],
                 level: 'behavior_v2',
-                connectors: null
+                connectors: null,
+                remote: false
             }
         );
         check('bridgeSupportsLevel(v2) true', client.bridgeSupportsLevel('behavior_v2'), true);
@@ -1242,6 +1243,270 @@ async function main() {
         } finally {
             global.WebSocket = RealWS;
         }
+    }
+
+    console.log('\n=== remote-control mode (LAB-357): attach, run_request, run_status ===');
+    {
+        const HELLO_GATEWAY = {
+            type: 'hello_ack',
+            bridge: '3.4 · rig plan-b',
+            levels: ['behavior_v2', 'behavior_v1', 'full'],
+            level: 'behavior_v2',
+            remote: true
+        };
+        const HELLO_34 = {
+            type: 'hello_ack',
+            bridge: '3.4 · behavior_v2',
+            levels: ['behavior_v2', 'behavior_v1', 'full'],
+            level: 'behavior_v2'
+        };
+        const client = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        const attachEvents = [];
+        const requests = [];
+        client.on('remote_attach', (i) => attachEvents.push(i));
+        client.on('run_request', (m) => requests.push(m));
+        check('supportsRemote: unknown before any hello_ack', client.supportsRemote(), null);
+        const offline = await client.remoteAttach(true);
+        check(
+            'remoteAttach while disconnected → not ok, never rejects',
+            [offline.ok, offline.on, offline.error],
+            [false, false, 'bridge not connected']
+        );
+        checkBool('… and it does not start wanting a re-attach', client.remoteWanted === false);
+        check(
+            'sendRunStatus while disconnected → false',
+            client.sendRunStatus({ id: 'r', state: 'done' }),
+            false
+        );
+
+        // Bridge 3.4: hello_ack without `remote` → refuse, send nothing.
+        client.connect('ws://x');
+        let ws = FakeWS.last;
+        ws.open();
+        const early = await client.remoteAttach(true);
+        checkBool(
+            'before hello_ack: refused (unknown is not yes)',
+            early.ok === false && /has not answered hello/.test(early.error)
+        );
+        ws.message(HELLO_34);
+        check('supportsRemote: false on bridge 3.4', client.supportsRemote(), false);
+        const r34 = await client.remoteAttach(true);
+        checkBool(
+            'bridge 3.4 → refused with the reason',
+            r34.ok === false && /does not support remote control/.test(r34.error),
+            JSON.stringify(r34)
+        );
+        checkBool(
+            'nothing was sent to a bridge without the relay',
+            ws.sent.filter((m) => m.type === 'remote_attach').length === 0
+        );
+        client.disconnect();
+
+        // The rig gateway: attach, ack, events.
+        client.connect('ws://x');
+        ws = FakeWS.last;
+        ws.open();
+        ws.message(HELLO_GATEWAY);
+        check('supportsRemote: true on the gateway', client.supportsRemote(), true);
+        checkBool(
+            'no attach is sent on connect unless it is wanted',
+            ws.sent.filter((m) => m.type === 'remote_attach').length === 0
+        );
+        const p1 = client.remoteAttach(true);
+        check(
+            'remote_attach on:true sent',
+            ws.sent.filter((m) => m.type === 'remote_attach').pop(),
+            { type: 'remote_attach', on: true }
+        );
+        checkBool('not attached until the gateway says so', client.remoteAttached === false);
+        ws.message({ type: 'remote_attach_ack', ok: true, on: true });
+        check('ack resolves the promise', await p1, { ok: true, on: true, error: null });
+        checkBool('attached', client.remoteAttached === true && client.remoteWanted === true);
+        check(
+            "'remote_attach' event carries the ack",
+            [attachEvents.length, attachEvents[0].ok, attachEvents[0].on, attachEvents[0].auto],
+            [1, true, true, false]
+        );
+
+        // run_request is handed to subscribers, untouched; the client starts nothing itself.
+        const req = {
+            type: 'run_request',
+            id: 'r1',
+            action: 'run',
+            name: 'a.yaml',
+            protocol: 'version: 3\n'
+        };
+        ws.message(req);
+        check("'run_request' event carries the message verbatim", requests, [req]);
+        check(
+            'sendRunStatus sends a run_status',
+            [
+                client.sendRunStatus({
+                    id: 'r1',
+                    state: 'running',
+                    step: { i: 1, n: 2, condition: 'cw' }
+                }),
+                ws.sent[ws.sent.length - 1]
+            ],
+            [
+                true,
+                {
+                    id: 'r1',
+                    state: 'running',
+                    step: { i: 1, n: 2, condition: 'cw' },
+                    type: 'run_status'
+                }
+            ]
+        );
+        check(
+            'sendRunStatus refuses a status without id or state',
+            [client.sendRunStatus({ id: 'r1' }), client.sendRunStatus(null)],
+            [false, false]
+        );
+
+        // A refused attach (another Studio holds the slot).
+        const client2 = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        client2.connect('ws://x');
+        const ws2 = FakeWS.last;
+        ws2.open();
+        ws2.message(HELLO_GATEWAY);
+        const p2 = client2.remoteAttach(true);
+        ws2.message({
+            type: 'remote_attach_ack',
+            ok: false,
+            on: false,
+            error: 'another Studio is already in remote-control mode on this gateway'
+        });
+        const refused = await p2;
+        checkBool(
+            "a refusal resolves not ok with the gateway's error, and the page is not attached",
+            refused.ok === false &&
+                /another Studio/.test(refused.error) &&
+                client2.remoteAttached === false
+        );
+
+        // Bridge LOST while attached: not attached any more, waiters settle, then re-attach on reconnect.
+        attachEvents.length = 0;
+        const pending = client.remoteAttach(true); // a second attach in flight when the socket dies
+        let lostSeen = null;
+        client.on('lost', () => {
+            lostSeen = { attached: client.remoteAttached, waiter: client._attachWaiter };
+        });
+        ws.close(); // not asked for → a loss
+        check('an attach in flight settles at the loss (fail-fast, no 3 s wait)', await pending, {
+            ok: false,
+            on: false,
+            error: 'bridge lost'
+        });
+        checkBool(
+            "before 'lost' fires: no longer attached and no waiter left",
+            lostSeen && lostSeen.attached === false && lostSeen.waiter === null,
+            JSON.stringify(lostSeen)
+        );
+        checkBool(
+            "'remote_attach' reports the loss",
+            attachEvents.some(
+                (e) => e.ok === false && e.on === false && e.reason === 'bridge lost'
+            ),
+            JSON.stringify(attachEvents)
+        );
+        checkBool('still wanted: a reconnect re-attaches', client.remoteWanted === true);
+        attachEvents.length = 0;
+        client.connect('ws://x');
+        ws = FakeWS.last;
+        ws.open();
+        checkBool(
+            'no re-attach before the new hello_ack',
+            ws.sent.filter((m) => m.type === 'remote_attach').length === 0
+        );
+        ws.message(HELLO_GATEWAY);
+        check(
+            're-attach sent by itself on the hello_ack of the reconnect',
+            ws.sent.filter((m) => m.type === 'remote_attach'),
+            [{ type: 'remote_attach', on: true }]
+        );
+        ws.message({ type: 'remote_attach_ack', ok: true, on: true });
+        checkBool(
+            "attached again, reported as an automatic re-attach ('auto')",
+            client.remoteAttached === true &&
+                attachEvents.length === 1 &&
+                attachEvents[0].auto === true &&
+                attachEvents[0].ok === true,
+            JSON.stringify(attachEvents)
+        );
+
+        // A reconnect onto a bridge WITHOUT the relay: no attach sent, the event says why.
+        attachEvents.length = 0;
+        ws.close();
+        client.connect('ws://x');
+        ws = FakeWS.last;
+        ws.open();
+        ws.message(HELLO_34);
+        checkBool(
+            'reconnect onto bridge 3.4: nothing sent, the event carries the reason',
+            ws.sent.filter((m) => m.type === 'remote_attach').length === 0 &&
+                attachEvents.some(
+                    (e) =>
+                        e.ok === false &&
+                        e.auto === true &&
+                        /does not support remote control/.test(e.error)
+                ),
+            JSON.stringify(attachEvents)
+        );
+
+        // Leaving: on:false ends the wanting first, so a later reconnect never re-attaches.
+        ws.close();
+        client.connect('ws://x');
+        ws = FakeWS.last;
+        ws.open();
+        ws.message(HELLO_GATEWAY);
+        ws.message({ type: 'remote_attach_ack', ok: true, on: true });
+        const pOff = client.remoteAttach(false);
+        checkBool('leaving stops the wanting at once', client.remoteWanted === false);
+        check(
+            'remote_attach on:false sent',
+            ws.sent.filter((m) => m.type === 'remote_attach').pop(),
+            {
+                type: 'remote_attach',
+                on: false
+            }
+        );
+        ws.message({ type: 'remote_attach_ack', ok: true, on: false });
+        check('leave acked', await pOff, { ok: true, on: false, error: null });
+        checkBool('detached', client.remoteAttached === false);
+        ws.close();
+        client.connect('ws://x');
+        ws = FakeWS.last;
+        ws.open();
+        ws.message(HELLO_GATEWAY);
+        checkBool(
+            'after leaving, a reconnect does NOT re-attach',
+            ws.sent.filter((m) => m.type === 'remote_attach').length === 0
+        );
+        const offNow = await (() => {
+            client.disconnect();
+            return client.remoteAttach(false);
+        })();
+        check('leaving while disconnected succeeds locally', offNow, {
+            ok: true,
+            on: false,
+            error: null
+        });
+
+        // No ack: the attach times out (not ok), it never hangs.
+        const client3 = new FicTracBridgeClient({ WebSocketImpl: FakeWS });
+        client3.connect('ws://x');
+        const ws3 = FakeWS.last;
+        ws3.open();
+        ws3.message(HELLO_GATEWAY);
+        const slow = await client3.remoteAttach(true, 20);
+        checkBool(
+            'no remote_attach_ack → resolves not ok after the timeout',
+            slow.ok === false &&
+                /no remote_attach_ack/.test(slow.error) &&
+                client3.remoteAttached === false
+        );
+        client3.disconnect();
     }
 
     console.log('\n=== Summary ===');
